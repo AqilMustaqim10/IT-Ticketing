@@ -4,7 +4,7 @@
  * Lightweight search, quick BU filter, and direct actions.
  */
 
-import React from 'react';
+import React, { useState, useEffect } from 'react';
 import {
   Menu,
   Search,
@@ -12,10 +12,13 @@ import {
   Building2,
   FileDown,
   ChevronDown,
+  Database,
+  RefreshCw,
 } from 'lucide-react';
 import { User, BusinessUnit, DashboardFilterState } from '../types';
 import { getBUTheme } from '../utils/themeUtils';
 import { BUBadge } from './BUBadge';
+import { postgresBridge, DbStatus } from '../services/postgresBridgeService';
 
 interface TopBarProps {
   currentUser: User;
@@ -45,12 +48,32 @@ export const TopBar: React.FC<TopBarProps> = ({
   const currentBU = businessUnits.find((b) => b.id === activeBUId);
   const theme = getBUTheme(currentBU, businessUnits);
 
+  const [dbStatus, setDbStatus] = useState<DbStatus | null>(null);
+  const [syncing, setSyncing] = useState(false);
+
+  useEffect(() => {
+    postgresBridge.checkStatus().then(setDbStatus);
+  }, []);
+
   const handleBUChange = (newBuId: string) => {
     onFilterChange({
       ...filters,
       businessUnitId: newBuId,
       departmentId: 'ALL',
     });
+  };
+
+  const handleSyncToPostgres = async () => {
+    if (syncing) return;
+    setSyncing(true);
+    const res = await postgresBridge.syncAllToPostgres();
+    setSyncing(false);
+    if (res.success) {
+      alert('Success: Local records synchronized directly to PostgreSQL database!');
+      postgresBridge.checkStatus().then(setDbStatus);
+    } else {
+      alert(`PostgreSQL Sync Note: ${res.error || 'Check server connection'}`);
+    }
   };
 
   return (
@@ -141,6 +164,23 @@ export const TopBar: React.FC<TopBarProps> = ({
 
       {/* Right: Actions & User Info */}
       <div className="flex items-center space-x-2">
+        {/* DB Connection Indicator for Admins & IT */}
+        {currentUser.role !== 'USER' && (
+          <div className="hidden xl:flex items-center space-x-1.5 px-2 py-1 rounded-md text-[11px] bg-slate-100/90 border border-slate-200 text-slate-600">
+            <Database className={`w-3.5 h-3.5 ${dbStatus?.connected ? 'text-emerald-600' : 'text-slate-400'}`} />
+            <span className="font-mono">{dbStatus?.connected ? 'PostgreSQL' : 'Local Storage'}</span>
+            <button
+              id="topbar-btn-sync-db"
+              onClick={handleSyncToPostgres}
+              disabled={syncing}
+              title="Sync current records into PostgreSQL"
+              className="p-0.5 ml-1 text-slate-500 hover:text-slate-900 rounded hover:bg-slate-200 transition"
+            >
+              <RefreshCw className={`w-3 h-3 ${syncing ? 'animate-spin text-blue-600' : ''}`} />
+            </button>
+          </div>
+        )}
+
         <button
           id="topbar-btn-export-pdf"
           onClick={onExportPDF}
