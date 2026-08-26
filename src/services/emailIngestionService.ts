@@ -376,13 +376,6 @@ class EmailIngestionService {
 
     allUsers.push(newUser);
     localStorage.setItem('it_ticketing_users_v2', JSON.stringify(allUsers));
-    try {
-      import('./firestoreService').then(({ saveUser }) => {
-        saveUser(newUser).catch(console.error);
-      });
-    } catch (e) {
-      console.warn('Firestore sync error:', e);
-    }
 
     return newUser;
   }

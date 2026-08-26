@@ -228,15 +228,6 @@ class StorageService {
 
     localStorage.setItem(STORAGE_KEYS.USERS, JSON.stringify(allUsers));
 
-    // Synchronize password update with Firestore
-    try {
-      import('./firestoreService').then(({ saveUser }) => {
-        saveUser(updatedUser).catch(console.error);
-      });
-    } catch (e) {
-      console.warn('Firestore sync error on password change:', e);
-    }
-
     // Force automatic logout after password change
     this.logout();
 
@@ -297,15 +288,6 @@ class StorageService {
 
     allUsers[userIndex] = updatedTargetUser;
     localStorage.setItem(STORAGE_KEYS.USERS, JSON.stringify(allUsers));
-
-    // Synchronize reset password with Firestore
-    try {
-      import('./firestoreService').then(({ saveUser }) => {
-        saveUser(updatedTargetUser).catch(console.error);
-      });
-    } catch (e) {
-      console.warn('Firestore sync error on password reset:', e);
-    }
 
     // If target user is the currently logged in user, refresh their session
     const currentSession = this.getCurrentUser();
@@ -373,14 +355,6 @@ class StorageService {
     };
 
     localStorage.setItem(STORAGE_KEYS.BUSINESS_UNITS, JSON.stringify(businessUnits));
-    // Asynchronously synchronize to Cloud Firestore
-    try {
-      import('./firestoreService').then(({ saveBusinessUnit }) => {
-        saveBusinessUnit(businessUnits[index]).catch(console.error);
-      });
-    } catch (e) {
-      console.warn('Firestore sync error:', e);
-    }
     return { success: true, businessUnit: businessUnits[index] };
   }
 
@@ -455,15 +429,6 @@ class StorageService {
 
     const updatedDepts = [...allDepts, newDept];
     localStorage.setItem(STORAGE_KEYS.DEPARTMENTS, JSON.stringify(updatedDepts));
-
-    // Asynchronously synchronize with Cloud Firestore
-    try {
-      import('./firestoreService').then(({ saveDepartment }) => {
-        saveDepartment(newDept).catch(console.error);
-      });
-    } catch (e) {
-      console.warn('Firestore department sync error:', e);
-    }
 
     return { success: true, department: newDept };
   }
@@ -547,15 +512,6 @@ class StorageService {
     allDepts[deptIndex] = updatedDept;
     localStorage.setItem(STORAGE_KEYS.DEPARTMENTS, JSON.stringify(allDepts));
 
-    // Asynchronously synchronize with Cloud Firestore
-    try {
-      import('./firestoreService').then(({ saveDepartment }) => {
-        saveDepartment(updatedDept).catch(console.error);
-      });
-    } catch (e) {
-      console.warn('Firestore department sync error on update:', e);
-    }
-
     return { success: true, department: updatedDept };
   }
 
@@ -601,16 +557,7 @@ class StorageService {
     const updatedUsers = allUsers.map((u) => {
       if (u.departmentId === deptId) {
         usersModified = true;
-        const patchedUser = { ...u, departmentId: fallbackDeptId };
-        // Sync re-assigned user to Firestore
-        try {
-          import('./firestoreService').then(({ saveUser }) => {
-            saveUser(patchedUser).catch(console.error);
-          });
-        } catch (e) {
-          console.warn('Firestore user reassign sync error:', e);
-        }
-        return patchedUser;
+        return { ...u, departmentId: fallbackDeptId };
       }
       return u;
     });
@@ -621,15 +568,6 @@ class StorageService {
       if (activeSession && activeSession.departmentId === deptId) {
         this.setCurrentUser({ ...activeSession, departmentId: fallbackDeptId });
       }
-    }
-
-    // Sync deletion to Firestore
-    try {
-      import('./firestoreService').then(({ deleteDepartment }) => {
-        deleteDepartment(deptId).catch(console.error);
-      });
-    } catch (e) {
-      console.warn('Firestore department deletion sync error:', e);
     }
 
     return { success: true };
@@ -733,13 +671,6 @@ class StorageService {
 
     allUsers.push(newUser);
     localStorage.setItem(STORAGE_KEYS.USERS, JSON.stringify(allUsers));
-    try {
-      import('./firestoreService').then(({ saveUser }) => {
-        saveUser(newUser).catch(console.error);
-      });
-    } catch (e) {
-      console.warn('Firestore sync error:', e);
-    }
 
     return { success: true, user: newUser };
   }
@@ -830,15 +761,6 @@ class StorageService {
     allUsers[userIndex] = updatedUser;
     localStorage.setItem(STORAGE_KEYS.USERS, JSON.stringify(allUsers));
 
-    // Asynchronously synchronize with Cloud Firestore
-    try {
-      import('./firestoreService').then(({ saveUser }) => {
-        saveUser(updatedUser).catch(console.error);
-      });
-    } catch (e) {
-      console.warn('Firestore user update sync error:', e);
-    }
-
     // If target user is the currently logged in user, refresh active session
     const currentSession = this.getCurrentUser();
     if (currentSession && currentSession.id === userId) {
@@ -891,13 +813,6 @@ class StorageService {
 
     const updatedUsers = allUsers.filter((u) => u.id !== userId);
     localStorage.setItem(STORAGE_KEYS.USERS, JSON.stringify(updatedUsers));
-    try {
-      import('./firestoreService').then(({ deleteUser }) => {
-        deleteUser(userId).catch(console.error);
-      });
-    } catch (e) {
-      console.warn('Firestore sync error on user deletion:', e);
-    }
 
     return { success: true };
   }
@@ -1120,13 +1035,6 @@ class StorageService {
     newTicket.activities![0].ticketId = newTicket.id;
     allTickets.unshift(newTicket);
     localStorage.setItem(STORAGE_KEYS.TICKETS, JSON.stringify(allTickets));
-    try {
-      import('./firestoreService').then(({ saveTicket }) => {
-        saveTicket(newTicket).catch(console.error);
-      });
-    } catch (e) {
-      console.warn('Firestore sync error:', e);
-    }
 
     return newTicket;
   }
@@ -1253,13 +1161,6 @@ class StorageService {
     allTickets[index] = ticket;
 
     localStorage.setItem(STORAGE_KEYS.TICKETS, JSON.stringify(allTickets));
-    try {
-      import('./firestoreService').then(({ saveTicket }) => {
-        saveTicket(ticket).catch(console.error);
-      });
-    } catch (e) {
-      console.warn('Firestore sync error:', e);
-    }
     return { success: true, ticket };
   }
 
@@ -1289,29 +1190,14 @@ class StorageService {
     const updatedTickets = allTickets.filter((t) => t.id !== ticketId);
     localStorage.setItem(STORAGE_KEYS.TICKETS, JSON.stringify(updatedTickets));
 
-    try {
-      import('./firestoreService').then(({ deleteTicket }) => {
-        deleteTicket(ticketId).catch(console.error);
-      });
-    } catch (e) {
-      console.warn('Firestore sync error on deleteTicket:', e);
-    }
-
     return { success: true };
   }
 
   /**
-   * Deletes all tickets from local storage and firestore.
+   * Deletes all tickets from local storage.
    */
   public clearAllTickets(): void {
     localStorage.setItem(STORAGE_KEYS.TICKETS, JSON.stringify([]));
-    try {
-      import('./firestoreService').then(({ clearAllTicketsFromFirestore }) => {
-        clearAllTicketsFromFirestore().catch(console.error);
-      });
-    } catch (e) {
-      console.warn('Firestore sync error on clearAllTickets:', e);
-    }
   }
 }
 

@@ -7,13 +7,6 @@
 
 import React, { useState, useEffect, useCallback } from 'react';
 import {
-  initializeFirestoreDatabase,
-  subscribeToBusinessUnits,
-  subscribeToDepartments,
-  subscribeToUsers,
-  subscribeToTickets,
-} from './services/firestoreService';
-import {
   storageService,
 } from './services/storageService';
 import { User, Ticket, BusinessUnit, Department, DashboardFilterState, MetricSummary, TicketStatus, TicketPriority, UserRole, AppView } from './types';
@@ -132,42 +125,13 @@ export default function App() {
 
   // Sync data on mount and whenever user or filter configuration changes
   useEffect(() => {
-    // Ensure all legacy ticket data is removed from local storage and firestore
+    // Ensure all legacy ticket data is removed from local storage
     if (!localStorage.getItem('it_ticketing_tickets_cleared_v2')) {
       storageService.clearAllTickets();
       localStorage.setItem('it_ticketing_tickets_cleared_v2', 'true');
     }
 
     refreshData();
-
-    // Initialize Cloud Firestore and listen for real-time updates
-    initializeFirestoreDatabase().then(() => {
-      refreshData();
-    });
-
-    const unsubBU = subscribeToBusinessUnits((bus) => {
-      localStorage.setItem('it_ticketing_business_units_v2', JSON.stringify(bus));
-      refreshData();
-    });
-    const unsubDept = subscribeToDepartments((depts) => {
-      localStorage.setItem('it_ticketing_departments_v2', JSON.stringify(depts));
-      refreshData();
-    });
-    const unsubUsers = subscribeToUsers((users) => {
-      localStorage.setItem('it_ticketing_users_v2', JSON.stringify(users));
-      refreshData();
-    });
-    const unsubTickets = subscribeToTickets((ticks) => {
-      localStorage.setItem('it_ticketing_tickets_v2', JSON.stringify(ticks));
-      refreshData();
-    });
-
-    return () => {
-      unsubBU();
-      unsubDept();
-      unsubUsers();
-      unsubTickets();
-    };
   }, [refreshData]);
 
   // When user persona changes, align the business unit filter
@@ -206,18 +170,6 @@ export default function App() {
     });
     refreshData();
     showToast('Database reset to default seed data successfully!', 'success');
-  };
-
-  // Push / Sync everything directly into Cloud Firestore
-  const handleSyncFirestore = async () => {
-    showToast('Syncing all collections to Firestore (it-ticketing-app-3819c)...', 'info');
-    const res = await initializeFirestoreDatabase(true);
-    if (res.success) {
-      showToast('All collections created and synced to Firebase!', 'success');
-      refreshData();
-    } else {
-      showToast(res.message, 'error');
-    }
   };
 
   // =========================================================================
