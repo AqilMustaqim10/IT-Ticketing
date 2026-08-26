@@ -1,0 +1,87 @@
+{
+  "entities": {
+    "businessUnits": {
+      "title": "Business Unit",
+      "description": "Organizational branch / division entity with custom branding",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "name": { "type": "string" },
+        "code": { "type": "string" },
+        "description": { "type": "string" },
+        "branding": { "type": "object" }
+      },
+      "required": ["id", "name", "code"]
+    },
+    "departments": {
+      "title": "Department",
+      "description": "Department belonging to a business unit",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "name": { "type": "string" },
+        "code": { "type": "string" },
+        "businessUnitId": { "type": "string" }
+      },
+      "required": ["id", "name", "code", "businessUnitId"]
+    },
+    "users": {
+      "title": "User",
+      "description": "System user with RBAC role, business unit, and department",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "username": { "type": "string" },
+        "fullName": { "type": "string" },
+        "email": { "type": "string" },
+        "role": { "type": "string" },
+        "businessUnitId": { "type": "string" },
+        "departmentId": { "type": "string" },
+        "mustChangePassword": { "type": "boolean" },
+        "createdAt": { "type": "string" }
+      },
+      "required": ["id", "username", "fullName", "email", "role", "businessUnitId", "departmentId"]
+    },
+    "tickets": {
+      "title": "Ticket",
+      "description": "IT support incident ticket",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "ticketNumber": { "type": "string" },
+        "title": { "type": "string" },
+        "description": { "type": "string" },
+        "status": { "type": "string" },
+        "priority": { "type": "string" },
+        "createdById": { "type": "string" },
+        "assignedToId": { "type": "string" },
+        "businessUnitId": { "type": "string" },
+        "departmentId": { "type": "string" },
+        "createdAt": { "type": "string" },
+        "updatedAt": { "type": "string" },
+        "resolutionNotes": { "type": "string" },
+        "activities": { "type": "array" },
+        "attachments": { "type": "array" }
+      },
+      "required": ["id", "ticketNumber", "title", "status", "priority", "createdById", "businessUnitId", "departmentId", "createdAt", "updatedAt"]
+    }
+  },
+  "firestore": {
+    "/businessUnits/{unitId}": {
+      "schema": "businessUnits",
+      "description": "Business units collection"
+    },
+    "/departments/{deptId}": {
+      "schema": "departments",
+      "description": "Departments collection"
+    },
+    "/users/{userId}": {
+      "schema": "users",
+      "description": "Users collection"
+    },
+    "/tickets/{ticketId}": {
+      "schema": "tickets",
+      "description": "Support tickets collection"
+    }
+  }
+}
