@@ -328,7 +328,7 @@ export const UserManagementModal: React.FC<UserManagementModalProps> = ({
                             <span className="text-slate-400 block text-[10px]">{bu?.name}</span>
                           </td>
                           <td className="p-3">
-                            <span className="text-slate-700">{dept?.name || 'General'}</span>
+                            <span className="text-slate-700 font-medium">{u.department || dept?.name || 'General / Unassigned'}</span>
                           </td>
                           <td className="p-3">
                             {isPendingChange ? (

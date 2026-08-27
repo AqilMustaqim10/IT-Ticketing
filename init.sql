@@ -33,10 +33,14 @@ CREATE TABLE IF NOT EXISTS users (
     role VARCHAR(20) NOT NULL CHECK (role IN ('ADMIN', 'IT', 'USER')),
     business_unit_id VARCHAR(64) REFERENCES business_units(id) ON DELETE SET NULL,
     department_id VARCHAR(64) REFERENCES departments(id) ON DELETE SET NULL,
+    department VARCHAR(255),
     avatar_url TEXT,
     must_change_password BOOLEAN DEFAULT FALSE,
     created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
 );
+
+-- Ensure department column exists in existing deployments
+ALTER TABLE users ADD COLUMN IF NOT EXISTS department VARCHAR(255);
 
 -- 4. Create Support Tickets Table
 CREATE TABLE IF NOT EXISTS tickets (
@@ -127,26 +131,26 @@ ON CONFLICT (id) DO UPDATE SET
   business_unit_id = EXCLUDED.business_unit_id;
 
 -- Seed Initial Users (Default Password: password123)
-INSERT INTO users (id, username, password_hash, full_name, email, role, business_unit_id, department_id, avatar_url, must_change_password) VALUES
-('user-admin-01', 'admin', 'password123', 'Alex Vance (Global Administrator)', 'alex.vance@enterprise-it.internal', 'ADMIN', 'bu-uoahq', 'dept-uoa-sec', 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=150&auto=format&fit=crop&q=80', false),
-('user-it-ccec', 'it.ccec', 'password123', 'David Thorne (CCEC IT Lead)', 'david.thorne@ccec.internal', 'IT', 'bu-ccec', 'dept-ccec-av', 'https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?w=150&auto=format&fit=crop&q=80', false),
-('user-it-fnb', 'it.fnb', 'password123', 'Nadia Rostova (F&B Systems Tech)', 'nadia.rostova@fnb.internal', 'IT', 'bu-fnb', 'dept-fnb-pos', 'https://images.unsplash.com/photo-1494790108377-be9c29b29330?w=150&auto=format&fit=crop&q=80', false),
-('user-it-hotel', 'it.hotel', 'password123', 'Kenji Sato (Hotel IT Specialist)', 'kenji.sato@hotel.internal', 'IT', 'bu-hotel', 'dept-htl-net', 'https://images.unsplash.com/photo-1500648767791-00dcc994a43e?w=150&auto=format&fit=crop&q=80', false),
-('user-it-klbs', 'it.klbs', 'password123', 'Farhan Razak (KLBS IT Lead)', 'farhan.razak@klbs.internal', 'IT', 'bu-klbs', 'dept-klbs-infra', 'https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?w=150&auto=format&fit=crop&q=80', false),
-('user-it-klw', 'it.klw', 'password123', 'Dr. Melissa Tan (KLW Systems Admin)', 'melissa.tan@klw.internal', 'IT', 'bu-klw', 'dept-klw-iot', 'https://images.unsplash.com/photo-1594824813593-3d026938cb1d?w=150&auto=format&fit=crop&q=80', false),
-('user-it-uoahq', 'it.uoahq', 'password123', 'Brandon Lee (HQ IT Infrastructure Lead)', 'brandon.lee@uoa.com.my', 'IT', 'bu-uoahq', 'dept-uoa-sec', 'https://images.unsplash.com/photo-1472099645785-5658abf4ff4e?w=150&auto=format&fit=crop&q=80', false),
-('user-ccec-staff1', 'sarah.events', 'password123', 'Sarah Jenkins', 'sarah.jenkins@ccec.internal', 'USER', 'bu-ccec', 'dept-ccec-av', 'https://images.unsplash.com/photo-1573496359142-b8d87734a5a2?w=150&auto=format&fit=crop&q=80', false),
-('user-ccec-staff2', 'marcus.hall', 'password123', 'Marcus Hall (First-Time User)', 'marcus.hall@ccec.internal', 'USER', 'bu-ccec', 'dept-ccec-ops', 'https://images.unsplash.com/photo-1519085360753-af0119f7cbe7?w=150&auto=format&fit=crop&q=80', true),
-('user-fnb-staff1', 'chef.robert', 'password123', 'Chef Robert Chen', 'robert.chen@fnb.internal', 'USER', 'bu-fnb', 'dept-fnb-pos', 'https://images.unsplash.com/photo-1583394838336-acd977736f90?w=150&auto=format&fit=crop&q=80', false),
-('user-fnb-staff2', 'lisa.floor', 'password123', 'Lisa Alvarez (First-Time User)', 'lisa.alvarez@fnb.internal', 'USER', 'bu-fnb', 'dept-fnb-rest', 'https://images.unsplash.com/photo-1544005313-94ddf0286df2?w=150&auto=format&fit=crop&q=80', true),
-('user-htl-staff1', 'elena.frontdesk', 'password123', 'Elena Gomez (First-Time User)', 'elena.gomez@hotel.internal', 'USER', 'bu-hotel', 'dept-htl-front', 'https://images.unsplash.com/photo-1580489944761-15a19d654956?w=150&auto=format&fit=crop&q=80', true),
-('user-htl-staff2', 'david.concierge', 'password123', 'David Morales', 'david.morales@hotel.internal', 'USER', 'bu-hotel', 'dept-htl-hk', 'https://images.unsplash.com/photo-1506794778202-cad84cf45f1d?w=150&auto=format&fit=crop&q=80', false),
-('user-klbs-staff1', 'amira.sani', 'password123', 'Amira Sani', 'amira.sani@klbs.internal', 'USER', 'bu-klbs', 'dept-klbs-prop', 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=150&auto=format&fit=crop&q=80', false),
-('user-klbs-staff2', 'kamal.ariff', 'password123', 'Kamal Ariff (First-Time User)', 'kamal.ariff@klbs.internal', 'USER', 'bu-klbs', 'dept-klbs-mall', 'https://images.unsplash.com/photo-1500648767791-00dcc994a43e?w=150&auto=format&fit=crop&q=80', true),
-('user-klw-staff1', 'zack.wong', 'password123', 'Zackary Wong (First-Time User)', 'zackary.wong@klw.internal', 'USER', 'bu-klw', 'dept-klw-kiosk', 'https://images.unsplash.com/photo-1522075469751-3a6694fb2f61?w=150&auto=format&fit=crop&q=80', true),
-('user-klw-staff2', 'nurse.jenny', 'password123', 'Jenny Koh', 'jenny.koh@klw.internal', 'USER', 'bu-klw', 'dept-klw-ops', 'https://images.unsplash.com/photo-1559839734-2b71ea197ec2?w=150&auto=format&fit=crop&q=80', false),
-('user-uoa-staff1', 'claire.ng', 'password123', 'Claire Ng (Finance Director)', 'claire.ng@uoa.com.my', 'USER', 'bu-uoahq', 'dept-uoa-erp', 'https://images.unsplash.com/photo-1580489944761-15a19d654956?w=150&auto=format&fit=crop&q=80', false),
-('user-uoa-staff2', 'azman.hashim', 'password123', 'Azman Hashim (Legal Counsel)', 'azman.hashim@uoa.com.my', 'USER', 'bu-uoahq', 'dept-uoa-sec', 'https://images.unsplash.com/photo-1472099645785-5658abf4ff4e?w=150&auto=format&fit=crop&q=80', false)
+INSERT INTO users (id, username, password_hash, full_name, email, role, business_unit_id, department_id, department, avatar_url, must_change_password) VALUES
+('user-admin-01', 'admin', 'password123', 'Alex Vance (Global Administrator)', 'alex.vance@enterprise-it.internal', 'ADMIN', 'bu-uoahq', 'dept-uoa-sec', 'Enterprise Cybersecurity & Identity', 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=150&auto=format&fit=crop&q=80', false),
+('user-it-ccec', 'it.ccec', 'password123', 'David Thorne (CCEC IT Lead)', 'david.thorne@ccec.internal', 'IT', 'bu-ccec', 'dept-ccec-av', 'Audio Visual & Event Staging', 'https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?w=150&auto=format&fit=crop&q=80', false),
+('user-it-fnb', 'it.fnb', 'password123', 'Nadia Rostova (F&B Systems Tech)', 'nadia.rostova@fnb.internal', 'IT', 'bu-fnb', 'dept-fnb-pos', 'POS Terminals & Kitchen Displays', 'https://images.unsplash.com/photo-1494790108377-be9c29b29330?w=150&auto=format&fit=crop&q=80', false),
+('user-it-hotel', 'it.hotel', 'password123', 'Kenji Sato (Hotel IT Specialist)', 'kenji.sato@hotel.internal', 'IT', 'bu-hotel', 'dept-htl-net', 'Guest Room Networks & IPTV Systems', 'https://images.unsplash.com/photo-1500648767791-00dcc994a43e?w=150&auto=format&fit=crop&q=80', false),
+('user-it-klbs', 'it.klbs', 'password123', 'Farhan Razak (KLBS IT Lead)', 'farhan.razak@klbs.internal', 'IT', 'bu-klbs', 'dept-klbs-infra', 'Building Infrastructure & Access Control', 'https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?w=150&auto=format&fit=crop&q=80', false),
+('user-it-klw', 'it.klw', 'password123', 'Dr. Melissa Tan (KLW Systems Admin)', 'melissa.tan@klw.internal', 'IT', 'bu-klw', 'dept-klw-iot', 'Healthcare Smart IoT & Sensors', 'https://images.unsplash.com/photo-1594824813593-3d026938cb1d?w=150&auto=format&fit=crop&q=80', false),
+('user-it-uoahq', 'it.uoahq', 'password123', 'Brandon Lee (HQ IT Infrastructure Lead)', 'brandon.lee@uoa.com.my', 'IT', 'bu-uoahq', 'dept-uoa-sec', 'Enterprise Cybersecurity & Identity', 'https://images.unsplash.com/photo-1472099645785-5658abf4ff4e?w=150&auto=format&fit=crop&q=80', false),
+('user-ccec-staff1', 'sarah.events', 'password123', 'Sarah Jenkins', 'sarah.jenkins@ccec.internal', 'USER', 'bu-ccec', 'dept-ccec-av', 'Audio Visual & Event Staging', 'https://images.unsplash.com/photo-1573496359142-b8d87734a5a2?w=150&auto=format&fit=crop&q=80', false),
+('user-ccec-staff2', 'marcus.hall', 'password123', 'Marcus Hall (First-Time User)', 'marcus.hall@ccec.internal', 'USER', 'bu-ccec', 'dept-ccec-ops', 'Conference Operations & Facilities', 'https://images.unsplash.com/photo-1519085360753-af0119f7cbe7?w=150&auto=format&fit=crop&q=80', true),
+('user-fnb-staff1', 'chef.robert', 'password123', 'Chef Robert Chen', 'robert.chen@fnb.internal', 'USER', 'bu-fnb', 'dept-fnb-pos', 'POS Terminals & Kitchen Displays', 'https://images.unsplash.com/photo-1583394838336-acd977736f90?w=150&auto=format&fit=crop&q=80', false),
+('user-fnb-staff2', 'lisa.floor', 'password123', 'Lisa Alvarez (First-Time User)', 'lisa.alvarez@fnb.internal', 'USER', 'bu-fnb', 'dept-fnb-rest', 'Dining Outlets & Banqueting', 'https://images.unsplash.com/photo-1544005313-94ddf0286df2?w=150&auto=format&fit=crop&q=80', true),
+('user-htl-staff1', 'elena.frontdesk', 'password123', 'Elena Gomez (First-Time User)', 'elena.gomez@hotel.internal', 'USER', 'bu-hotel', 'dept-htl-front', 'Front Desk & Guest Reservations (PMS)', 'https://images.unsplash.com/photo-1580489944761-15a19d654956?w=150&auto=format&fit=crop&q=80', true),
+('user-htl-staff2', 'david.concierge', 'password123', 'David Morales', 'david.morales@hotel.internal', 'USER', 'bu-hotel', 'dept-htl-hk', 'Housekeeping Mobility & Asset Tracking', 'https://images.unsplash.com/photo-1506794778202-cad84cf45f1d?w=150&auto=format&fit=crop&q=80', false),
+('user-klbs-staff1', 'amira.sani', 'password123', 'Amira Sani', 'amira.sani@klbs.internal', 'USER', 'bu-klbs', 'dept-klbs-prop', 'Property Management & Tenant Tech', 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=150&auto=format&fit=crop&q=80', false),
+('user-klbs-staff2', 'kamal.ariff', 'password123', 'Kamal Ariff (First-Time User)', 'kamal.ariff@klbs.internal', 'USER', 'bu-klbs', 'dept-klbs-mall', 'Retail Mall Wi-Fi & Digital Signage', 'https://images.unsplash.com/photo-1500648767791-00dcc994a43e?w=150&auto=format&fit=crop&q=80', true),
+('user-klw-staff1', 'zack.wong', 'password123', 'Zackary Wong (First-Time User)', 'zackary.wong@klw.internal', 'USER', 'bu-klw', 'dept-klw-kiosk', 'Clinical Appointment Kiosks', 'https://images.unsplash.com/photo-1522075469751-3a6694fb2f61?w=150&auto=format&fit=crop&q=80', true),
+('user-klw-staff2', 'nurse.jenny', 'password123', 'Jenny Koh', 'jenny.koh@klw.internal', 'USER', 'bu-klw', 'dept-klw-ops', 'Wellness Centre Operations', 'https://images.unsplash.com/photo-1559839734-2b71ea197ec2?w=150&auto=format&fit=crop&q=80', false),
+('user-uoa-staff1', 'claire.ng', 'password123', 'Claire Ng (Finance Director)', 'claire.ng@uoa.com.my', 'USER', 'bu-uoahq', 'dept-uoa-erp', 'Central ERP & SAP Finance', 'https://images.unsplash.com/photo-1580489944761-15a19d654956?w=150&auto=format&fit=crop&q=80', false),
+('user-uoa-staff2', 'azman.hashim', 'password123', 'Azman Hashim (Legal Counsel)', 'azman.hashim@uoa.com.my', 'USER', 'bu-uoahq', 'dept-uoa-sec', 'Enterprise Cybersecurity & Identity', 'https://images.unsplash.com/photo-1472099645785-5658abf4ff4e?w=150&auto=format&fit=crop&q=80', false)
 ON CONFLICT (id) DO UPDATE SET
   username = EXCLUDED.username,
   password_hash = EXCLUDED.password_hash,
@@ -155,5 +159,13 @@ ON CONFLICT (id) DO UPDATE SET
   role = EXCLUDED.role,
   business_unit_id = EXCLUDED.business_unit_id,
   department_id = EXCLUDED.department_id,
+  department = EXCLUDED.department,
   avatar_url = EXCLUDED.avatar_url,
   must_change_password = EXCLUDED.must_change_password;
+
+-- Backfill any existing users whose department name is null
+UPDATE users
+SET department = departments.name
+FROM departments
+WHERE users.department_id = departments.id
+  AND (users.department IS NULL OR users.department = '');

@@ -64,27 +64,51 @@ export interface InboundEmailPayload {
   attachments?: InboundEmailAttachment[];
 }
 
-export interface Pop3MailboxConfig {
-  enabled: boolean;
-  provider: 'COMPANY_POP3' | 'COMPANY_IMAP' | 'OFFICE365' | 'CUSTOM_SERVER';
-  companyDomain?: string; // e.g. "uoa.com.my" or "company.com"
+export interface EmailSettings {
   host: string;
   port: number;
-  useSsl: boolean;
-  emailAddress: string; // e.g. "helpdesk@uoa.com.my"
-  username?: string; // Mailbox login account
-  appPassword?: string;
-  // Outbound SMTP for ticket confirmations & technician updates
+  user: string;
+  password?: string;
+  useSSL: boolean;
+  enabled?: boolean;
+  pollIntervalMinutes?: number;
+  emailAddress?: string;
+  companyDomain?: string;
+  provider?: 'COMPANY_POP3' | 'COMPANY_IMAP' | 'OFFICE365' | 'CUSTOM_SERVER';
   smtpEnabled?: boolean;
-  smtpHost?: string; // e.g. "smtp.uoa.com.my" or "smtp.office365.com"
-  smtpPort?: number; // e.g. 587 or 465
+  smtpHost?: string;
+  smtpPort?: number;
   smtpUseSsl?: boolean;
   smtpUsername?: string;
   smtpPassword?: string;
-  senderDisplayName?: string; // e.g. "UOA IT Helpdesk"
-  // Ingestion & Auto-Routing Rules
+  senderDisplayName?: string;
+  targetBusinessUnitId?: string;
+  defaultDepartmentId?: string;
+  autoAssignCategory?: boolean;
+  autoExtractPriority?: boolean;
+  leaveCopyOnServer?: boolean;
+  enableAutoReply?: boolean;
+  autoReplySubjectTemplate?: string;
+  autoReplyBodyTemplate?: string;
+  lastSyncTimestamp?: string;
+  // Aliases for multi-schema compatibility
+  username?: string;
+  appPassword?: string;
+  useSsl?: boolean;
+}
+
+export interface Pop3MailboxConfig extends EmailSettings {
+  enabled: boolean;
+  provider: 'COMPANY_POP3' | 'COMPANY_IMAP' | 'OFFICE365' | 'CUSTOM_SERVER';
+  companyDomain?: string;
+  host: string;
+  port: number;
+  useSsl: boolean;
+  emailAddress: string;
+  username?: string;
+  appPassword?: string;
   pollIntervalMinutes: number;
-  targetBusinessUnitId: string; // Default BU if sender cannot be matched
+  targetBusinessUnitId: string;
   defaultDepartmentId?: string;
   autoAssignCategory: boolean;
   autoExtractPriority: boolean;
@@ -181,6 +205,7 @@ export interface User {
   role: UserRole;
   businessUnitId: string; // Foreign Key to BusinessUnit
   departmentId: string;   // Foreign Key to Department
+  department?: string;    // Department Name (e.g. "Audio Visual & Event Staging")
   avatarUrl?: string;
   mustChangePassword?: boolean; // True for first-time login or after Admin/IT password reset
   createdAt: string;

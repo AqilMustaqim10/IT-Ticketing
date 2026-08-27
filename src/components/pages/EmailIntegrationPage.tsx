@@ -5,7 +5,7 @@
  * outbound SMTP relays, auto-ticket ingestion rules, and corporate employee email processing.
  */
 
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import {
   Mail,
   Server,
@@ -42,6 +42,7 @@ import {
   Department,
   User,
   Pop3MailboxConfig,
+  EmailSettings,
   InboundEmailLog,
   Ticket,
   TicketPriority,
@@ -53,6 +54,7 @@ import {
   DEFAULT_AUTO_REPLY_SUBJECT_TEMPLATE,
   DEFAULT_AUTO_REPLY_BODY_TEMPLATE,
 } from '../../services/emailIngestionService';
+import { storageService } from '../../services/storageService';
 import { BUBadge } from '../BUBadge';
 
 interface EmailIntegrationPageProps {
@@ -76,7 +78,22 @@ export const EmailIntegrationPage: React.FC<EmailIntegrationPageProps> = ({
   const isAdmin = currentUser.role === 'ADMIN';
 
   // Mailbox Configuration State
-  const [config, setConfig] = useState<Pop3MailboxConfig>(() => emailIngestionService.getConfig());
+  const [config, setConfig] = useState<Pop3MailboxConfig>(() => {
+    const fromStorage = storageService.getEmailSettings();
+    const fromService = emailIngestionService.getConfig();
+    return {
+      ...fromService,
+      ...fromStorage,
+      host: fromStorage.host || fromService.host,
+      port: fromStorage.port || fromService.port,
+      user: fromStorage.user || fromStorage.username || fromService.username || 'helpdesk@uoa.com.my',
+      username: fromStorage.user || fromStorage.username || fromService.username || 'helpdesk@uoa.com.my',
+      password: fromStorage.password || fromStorage.appPassword || fromService.appPassword || '',
+      appPassword: fromStorage.password || fromStorage.appPassword || fromService.appPassword || '',
+      useSSL: fromStorage.useSSL !== undefined ? fromStorage.useSSL : fromService.useSsl,
+      useSsl: fromStorage.useSSL !== undefined ? fromStorage.useSSL : fromService.useSsl,
+    };
+  });
   const [isTestingInbound, setIsTestingInbound] = useState(false);
   const [testInboundResult, setTestInboundResult] = useState<{
     success: boolean;
@@ -115,6 +132,37 @@ export const EmailIntegrationPage: React.FC<EmailIntegrationPageProps> = ({
   // Active Tab
   const [activeTab, setActiveTab] = useState<'SETTINGS' | 'TEST_BENCH' | 'LOGS'>('SETTINGS');
 
+  useEffect(() => {
+    // Load config from storageService and backend
+    const local = storageService.getEmailSettings();
+    if (local) {
+      setConfig((prev) => ({
+        ...prev,
+        ...local,
+        host: local.host || prev.host,
+        port: local.port || prev.port,
+        user: local.user || local.username || prev.user || prev.username,
+        username: local.user || local.username || prev.user || prev.username,
+        password: local.password || local.appPassword || prev.password || prev.appPassword,
+        appPassword: local.password || local.appPassword || prev.password || prev.appPassword,
+        useSSL: local.useSSL !== undefined ? local.useSSL : prev.useSSL,
+        useSsl: local.useSSL !== undefined ? local.useSSL : prev.useSsl,
+      }));
+    }
+
+    emailIngestionService.fetchServerConfig().then((srvConfig) => {
+      if (srvConfig) {
+        setConfig((prev) => ({ ...prev, ...srvConfig }));
+        storageService.saveEmailSettings(srvConfig);
+      }
+    });
+
+    // Load logs from backend
+    emailIngestionService.fetchServerLogs().then((srvLogs) => {
+      if (srvLogs) setLogs(srvLogs);
+    });
+  }, []);
+
   // If user is not an admin, block access with clear security notice
   if (!isAdmin) {
     return (
@@ -140,12 +188,46 @@ export const EmailIntegrationPage: React.FC<EmailIntegrationPageProps> = ({
   }
 
   const refreshLogs = () => {
-    setLogs(emailIngestionService.getLogs());
+    emailIngestionService.fetchServerLogs().then((srvLogs) => {
+      setLogs(srvLogs || emailIngestionService.getLogs());
+    });
   };
 
-  const handleSaveSettings = () => {
-    emailIngestionService.saveConfig(config);
-    onShowToast('Company mailbox configuration saved successfully!', 'success');
+  const handleSaveSettings = async () => {
+    const emailSettings: EmailSettings = {
+      host: config.host,
+      port: Number(config.port) || 995,
+      user: config.user || config.username || config.emailAddress,
+      username: config.user || config.username || config.emailAddress,
+      password: config.password || config.appPassword,
+      appPassword: config.password || config.appPassword,
+      useSSL: config.useSSL !== undefined ? config.useSSL : (config.useSsl !== undefined ? config.useSsl : true),
+      useSsl: config.useSSL !== undefined ? config.useSSL : (config.useSsl !== undefined ? config.useSsl : true),
+      enabled: config.enabled,
+      pollIntervalMinutes: config.pollIntervalMinutes,
+      emailAddress: config.emailAddress || config.user || config.username,
+      companyDomain: config.companyDomain,
+      provider: config.provider,
+      smtpEnabled: config.smtpEnabled,
+      smtpHost: config.smtpHost,
+      smtpPort: config.smtpPort,
+      smtpUseSsl: config.smtpUseSsl,
+      smtpUsername: config.smtpUsername,
+      smtpPassword: config.smtpPassword,
+      senderDisplayName: config.senderDisplayName,
+      targetBusinessUnitId: config.targetBusinessUnitId,
+      defaultDepartmentId: config.defaultDepartmentId,
+      autoAssignCategory: config.autoAssignCategory,
+      autoExtractPriority: config.autoExtractPriority,
+      leaveCopyOnServer: config.leaveCopyOnServer,
+      enableAutoReply: config.enableAutoReply,
+      autoReplySubjectTemplate: config.autoReplySubjectTemplate,
+      autoReplyBodyTemplate: config.autoReplyBodyTemplate,
+    };
+
+    storageService.saveEmailSettings(emailSettings);
+    await emailIngestionService.saveConfig(config);
+    onShowToast('POP3 Email Settings saved & integrated into background ticket ingestion!', 'success');
   };
 
   const handleTestInboundConnection = async () => {
@@ -206,7 +288,7 @@ export const EmailIntegrationPage: React.FC<EmailIntegrationPageProps> = ({
 
     try {
       // Simulate natural email transmission delay
-      await new Promise((resolve) => setTimeout(resolve, 600));
+      await new Promise((resolve) => setTimeout(resolve, 500));
 
       const res = await emailIngestionService.processInboundEmail({
         from: simulatorFrom,
@@ -237,13 +319,16 @@ export const EmailIntegrationPage: React.FC<EmailIntegrationPageProps> = ({
   const handleSyncMailboxNow = async () => {
     setIsSyncingMailbox(true);
     try {
-      await new Promise((resolve) => setTimeout(resolve, 800));
-      const res = await emailIngestionService.syncSampleMailbox();
+      const res = await emailIngestionService.fetchPop3EmailsNow(config);
       refreshLogs();
       if (onTicketCreated) {
         onTicketCreated();
       }
-      onShowToast(`Sync complete: ${res.processedCount} new company email(s) ingested into tickets!`, 'success');
+      if (res.fetchedCount > 0) {
+        onShowToast(`POP3 Fetch complete: ${res.fetchedCount} new report(s) auto-converted into tickets!`, 'success');
+      } else {
+        onShowToast(res.message || 'POP3 Mailbox is up to date (no new unread reports).', 'info');
+      }
     } catch (e: any) {
       onShowToast('Company mailbox sync failed', 'error');
     } finally {
@@ -251,8 +336,8 @@ export const EmailIntegrationPage: React.FC<EmailIntegrationPageProps> = ({
     }
   };
 
-  const handleClearLogs = () => {
-    emailIngestionService.clearLogs();
+  const handleClearLogs = async () => {
+    await emailIngestionService.clearLogs();
     refreshLogs();
     setSelectedLog(null);
     onShowToast('Email logs cleared.', 'info');
@@ -462,45 +547,134 @@ export const EmailIntegrationPage: React.FC<EmailIntegrationPageProps> = ({
               </label>
             </div>
 
-            {/* Section 1: Inbound Server Settings */}
+            {/* Section 1: POP3 Inbound Server Settings */}
             <div>
               <div className="flex items-center justify-between mb-3">
-                <h3 className="text-xs font-bold uppercase tracking-wider text-slate-700 flex items-center gap-1.5">
-                  <Inbox className="w-4 h-4 text-blue-600" />
-                  <span>1. Inbound Corporate Mail Server (POP3 / IMAP)</span>
-                </h3>
-                <span className="text-[11px] text-slate-400">Incoming helpdesk mail account</span>
+                <div className="flex items-center gap-2">
+                  <h3 className="text-xs font-bold uppercase tracking-wider text-slate-700 flex items-center gap-1.5">
+                    <Inbox className="w-4 h-4 text-blue-600" />
+                    <span>1. POP3 Server Details &amp; Connection Credentials</span>
+                  </h3>
+                  <span className="px-2 py-0.5 rounded text-[10px] font-mono font-bold bg-blue-50 text-blue-700 border border-blue-200">
+                    POP3 SSL/TLS
+                  </span>
+                </div>
+                <span className="text-[11px] text-slate-400">Captures POP3 host, port, user, password &amp; useSSL</span>
               </div>
 
               <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                 <div>
                   <label className="block text-xs font-semibold text-slate-700 mb-1">
+                    POP3 Server Host <span className="text-rose-500">*</span>
+                  </label>
+                  <input
+                    id="input-pop3-host"
+                    type="text"
+                    value={config.host}
+                    onChange={(e) => setConfig({ ...config, host: e.target.value })}
+                    placeholder="mail.uoa.com.my"
+                    className="w-full px-3 py-2 text-xs rounded-xl border border-slate-200 bg-slate-50 focus:bg-white focus:ring-2 focus:ring-blue-500 focus:outline-none font-mono"
+                  />
+                  <span className="text-[10px] text-slate-400 mt-0.5 block">e.g. mail.uoa.com.my or outlook.office365.com</span>
+                </div>
+
+                <div>
+                  <label className="block text-xs font-semibold text-slate-700 mb-1">
+                    POP3 Port &amp; SSL/TLS Encryption <span className="text-rose-500">*</span>
+                  </label>
+                  <div className="flex items-center gap-2">
+                    <input
+                      id="input-pop3-port"
+                      type="number"
+                      value={config.port}
+                      onChange={(e) => setConfig({ ...config, port: parseInt(e.target.value, 10) || 995 })}
+                      className="w-24 px-3 py-2 text-xs rounded-xl border border-slate-200 bg-slate-50 focus:bg-white focus:ring-2 focus:ring-blue-500 focus:outline-none font-mono"
+                      placeholder="995"
+                    />
+                    <label className="flex items-center gap-1.5 text-xs text-slate-700 font-medium cursor-pointer select-none bg-slate-50 px-2.5 py-1.5 rounded-xl border border-slate-200 hover:bg-slate-100 transition">
+                      <input
+                        id="input-pop3-usessl"
+                        type="checkbox"
+                        checked={config.useSSL !== undefined ? config.useSSL : config.useSsl}
+                        onChange={(e) => {
+                          const val = e.target.checked;
+                          setConfig({ ...config, useSSL: val, useSsl: val });
+                        }}
+                        className="rounded border-slate-300 text-blue-600 focus:ring-blue-500"
+                      />
+                      <span>useSSL (Port 995)</span>
+                    </label>
+                  </div>
+                  <span className="text-[10px] text-slate-400 mt-0.5 block">Standard: 995 (SSL/TLS) or 110 (Plain)</span>
+                </div>
+
+                <div>
+                  <label className="block text-xs font-semibold text-slate-700 mb-1">
+                    POP3 User / Username <span className="text-rose-500">*</span>
+                  </label>
+                  <input
+                    id="input-pop3-user"
+                    type="text"
+                    value={config.user || config.username || config.emailAddress}
+                    onChange={(e) => {
+                      const val = e.target.value;
+                      setConfig({ ...config, user: val, username: val, emailAddress: val });
+                    }}
+                    placeholder="helpdesk@uoa.com.my"
+                    className="w-full px-3 py-2 text-xs rounded-xl border border-slate-200 bg-slate-50 focus:bg-white focus:ring-2 focus:ring-blue-500 focus:outline-none"
+                  />
+                  <span className="text-[10px] text-slate-400 mt-0.5 block">Mailbox account user identifier</span>
+                </div>
+
+                <div>
+                  <label className="block text-xs font-semibold text-slate-700 mb-1">
+                    POP3 Password / App Secret <span className="text-rose-500">*</span>
+                  </label>
+                  <input
+                    id="input-pop3-password"
+                    type="password"
+                    value={config.password || config.appPassword || ''}
+                    onChange={(e) => {
+                      const val = e.target.value;
+                      setConfig({ ...config, password: val, appPassword: val });
+                    }}
+                    placeholder="••••••••••••••••"
+                    className="w-full px-3 py-2 text-xs rounded-xl border border-slate-200 bg-slate-50 focus:bg-white focus:ring-2 focus:ring-blue-500 focus:outline-none font-mono"
+                  />
+                  <span className="text-[10px] text-slate-400 mt-0.5 block">POP3 mailbox password or app password</span>
+                </div>
+
+                <div>
+                  <label className="block text-xs font-semibold text-slate-700 mb-1">
                     Corporate Email Address
                   </label>
                   <input
+                    id="input-pop3-emailaddress"
                     type="email"
                     value={config.emailAddress}
                     onChange={(e) => setConfig({ ...config, emailAddress: e.target.value })}
                     placeholder="helpdesk@uoa.com.my"
                     className="w-full px-3 py-2 text-xs rounded-xl border border-slate-200 bg-slate-50 focus:bg-white focus:ring-2 focus:ring-blue-500 focus:outline-none"
                   />
-                  <span className="text-[10px] text-slate-400 mt-0.5 block">Staff send inquiries to this address</span>
+                  <span className="text-[10px] text-slate-400 mt-0.5 block">Staff send inquiries to this company address</span>
                 </div>
 
                 <div>
                   <label className="block text-xs font-semibold text-slate-700 mb-1">
-                    Corporate Mail Provider
+                    Background Polling Interval
                   </label>
                   <select
-                    value={config.provider}
-                    onChange={(e) => setConfig({ ...config, provider: e.target.value as any })}
+                    id="select-poll-interval"
+                    value={config.pollIntervalMinutes}
+                    onChange={(e) => setConfig({ ...config, pollIntervalMinutes: parseInt(e.target.value, 10) || 3 })}
                     className="w-full px-3 py-2 text-xs rounded-xl border border-slate-200 bg-slate-50 focus:bg-white focus:ring-2 focus:ring-blue-500 focus:outline-none"
                   >
-                    <option value="COMPANY_POP3">Corporate POP3 Server (SSL/TLS)</option>
-                    <option value="COMPANY_IMAP">Corporate IMAP Server (SSL/TLS)</option>
-                    <option value="OFFICE365">Microsoft 365 Exchange Online</option>
-                    <option value="CUSTOM_SERVER">Custom Enterprise Mail Server</option>
+                    <option value="1">Every 1 Minute (Fast Polling)</option>
+                    <option value="3">Every 3 Minutes (Standard)</option>
+                    <option value="5">Every 5 Minutes (Low Bandwidth)</option>
+                    <option value="10">Every 10 Minutes</option>
                   </select>
+                  <span className="text-[10px] text-slate-400 mt-0.5 block">Controls background ticket ingestion polling frequency</span>
                 </div>
 
                 <div>
@@ -518,79 +692,17 @@ export const EmailIntegrationPage: React.FC<EmailIntegrationPageProps> = ({
 
                 <div>
                   <label className="block text-xs font-semibold text-slate-700 mb-1">
-                    Inbound Server Host
-                  </label>
-                  <input
-                    type="text"
-                    value={config.host}
-                    onChange={(e) => setConfig({ ...config, host: e.target.value })}
-                    placeholder="mail.uoa.com.my"
-                    className="w-full px-3 py-2 text-xs rounded-xl border border-slate-200 bg-slate-50 focus:bg-white focus:ring-2 focus:ring-blue-500 focus:outline-none font-mono"
-                  />
-                </div>
-
-                <div>
-                  <label className="block text-xs font-semibold text-slate-700 mb-1">
-                    Inbound Port &amp; Encryption
-                  </label>
-                  <div className="flex items-center gap-2">
-                    <input
-                      type="number"
-                      value={config.port}
-                      onChange={(e) => setConfig({ ...config, port: parseInt(e.target.value) || 995 })}
-                      className="w-24 px-3 py-2 text-xs rounded-xl border border-slate-200 bg-slate-50 focus:bg-white focus:ring-2 focus:ring-blue-500 focus:outline-none font-mono"
-                    />
-                    <label className="flex items-center gap-1.5 text-xs text-slate-600 cursor-pointer">
-                      <input
-                        type="checkbox"
-                        checked={config.useSsl}
-                        onChange={(e) => setConfig({ ...config, useSsl: e.target.checked })}
-                        className="rounded border-slate-300 text-blue-600 focus:ring-blue-500"
-                      />
-                      <span>SSL/TLS</span>
-                    </label>
-                  </div>
-                </div>
-
-                <div>
-                  <label className="block text-xs font-semibold text-slate-700 mb-1">
-                    Mailbox Login Username / User ID
-                  </label>
-                  <input
-                    type="text"
-                    value={config.username || config.emailAddress}
-                    onChange={(e) => setConfig({ ...config, username: e.target.value })}
-                    placeholder="helpdesk@uoa.com.my"
-                    className="w-full px-3 py-2 text-xs rounded-xl border border-slate-200 bg-slate-50 focus:bg-white focus:ring-2 focus:ring-blue-500 focus:outline-none"
-                  />
-                </div>
-
-                <div>
-                  <label className="block text-xs font-semibold text-slate-700 mb-1">
-                    Mailbox Password / Exchange Secret
-                  </label>
-                  <input
-                    type="password"
-                    value={config.appPassword || ''}
-                    onChange={(e) => setConfig({ ...config, appPassword: e.target.value })}
-                    placeholder="••••••••••••••••"
-                    className="w-full px-3 py-2 text-xs rounded-xl border border-slate-200 bg-slate-50 focus:bg-white focus:ring-2 focus:ring-blue-500 focus:outline-none font-mono"
-                  />
-                </div>
-
-                <div>
-                  <label className="block text-xs font-semibold text-slate-700 mb-1">
-                    Polling Interval (Minutes)
+                    Corporate Mail Provider
                   </label>
                   <select
-                    value={config.pollIntervalMinutes}
-                    onChange={(e) => setConfig({ ...config, pollIntervalMinutes: parseInt(e.target.value) || 3 })}
+                    value={config.provider}
+                    onChange={(e) => setConfig({ ...config, provider: e.target.value as any })}
                     className="w-full px-3 py-2 text-xs rounded-xl border border-slate-200 bg-slate-50 focus:bg-white focus:ring-2 focus:ring-blue-500 focus:outline-none"
                   >
-                    <option value="1">Every 1 Minute (Fast Ingestion)</option>
-                    <option value="3">Every 3 Minutes (Standard)</option>
-                    <option value="5">Every 5 Minutes (Low Bandwidth)</option>
-                    <option value="10">Every 10 Minutes</option>
+                    <option value="COMPANY_POP3">Corporate POP3 Server (SSL/TLS)</option>
+                    <option value="COMPANY_IMAP">Corporate IMAP Server (SSL/TLS)</option>
+                    <option value="OFFICE365">Microsoft 365 Exchange Online</option>
+                    <option value="CUSTOM_SERVER">Custom Enterprise Mail Server</option>
                   </select>
                 </div>
 

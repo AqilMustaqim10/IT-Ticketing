@@ -18,6 +18,7 @@ import {
   TicketActivity,
   TicketAttachment,
   BusinessUnitBranding,
+  EmailSettings,
 } from '../types';
 import {
   SEED_BUSINESS_UNITS,
@@ -34,9 +35,28 @@ const STORAGE_KEYS = {
   USERS: 'it_ticketing_users_v2',
   TICKETS: 'it_ticketing_tickets_v2',
   CURRENT_USER: 'it_ticketing_current_user_v2',
+  EMAIL_SETTINGS: 'it_ticketing_email_settings_v2',
 };
 
 export const DEFAULT_USER_PASSWORD = 'password123';
+
+export const DEFAULT_EMAIL_SETTINGS: EmailSettings = {
+  host: 'mail.uoa.com.my',
+  port: 995,
+  user: 'helpdesk@uoa.com.my',
+  password: '',
+  useSSL: true,
+  enabled: true,
+  pollIntervalMinutes: 3,
+  emailAddress: 'helpdesk@uoa.com.my',
+  companyDomain: 'uoa.com.my',
+  provider: 'COMPANY_POP3',
+  targetBusinessUnitId: 'bu-uoa-corp',
+  autoAssignCategory: true,
+  autoExtractPriority: true,
+  leaveCopyOnServer: true,
+  enableAutoReply: true,
+};
 
 class StorageService {
   /**
@@ -424,7 +444,7 @@ class StorageService {
     const updatedDepts = allDepts.filter((d) => d.id !== deptId);
     localStorage.setItem(STORAGE_KEYS.DEPARTMENTS, JSON.stringify(updatedDepts));
 
-    fetch(`/api/db/departments/${deptId}`, { method: 'DELETE' }).catch(() => {});
+    postgresBridge.deleteDepartment(deptId);
 
     return { success: true };
   }
@@ -435,7 +455,17 @@ class StorageService {
 
   public getAllUsers(): User[] {
     const raw = localStorage.getItem(STORAGE_KEYS.USERS);
-    return raw ? JSON.parse(raw) : SEED_USERS;
+    const users: User[] = raw ? JSON.parse(raw) : SEED_USERS;
+    const depts = this.getDepartments();
+    return users.map((u) => {
+      if (!u.department && u.departmentId) {
+        const found = depts.find((d) => d.id === u.departmentId);
+        if (found) {
+          return { ...u, department: found.name };
+        }
+      }
+      return u;
+    });
   }
 
   public getScopedUsers(currentUser: User): User[] {
@@ -455,6 +485,7 @@ class StorageService {
       role: UserRole;
       businessUnitId: string;
       departmentId: string;
+      department?: string;
       password?: string;
       avatarUrl?: string;
     }
@@ -478,6 +509,10 @@ class StorageService {
       return { success: false, error: `Username '${newUserPayload.username}' is already taken.` };
     }
 
+    const allDepts = this.getDepartments();
+    const matchedDept = allDepts.find((d) => d.id === newUserPayload.departmentId);
+    const deptName = newUserPayload.department || (matchedDept ? matchedDept.name : undefined);
+
     const newUser: User = {
       id: `user-${Date.now()}-${Math.random().toString(36).substr(2, 5)}`,
       username: newUserPayload.username.trim(),
@@ -486,6 +521,7 @@ class StorageService {
       role: newUserPayload.role,
       businessUnitId: newUserPayload.businessUnitId,
       departmentId: newUserPayload.departmentId,
+      department: deptName,
       password: DEFAULT_USER_PASSWORD,
       mustChangePassword: true,
       avatarUrl:
@@ -511,6 +547,7 @@ class StorageService {
       role?: UserRole;
       businessUnitId?: string;
       departmentId?: string;
+      department?: string;
       avatarUrl?: string;
     }
   ): { success: boolean; error?: string; user?: User } {
@@ -539,6 +576,11 @@ class StorageService {
       }
     }
 
+    const allDepts = this.getDepartments();
+    const newDeptId = updates.departmentId !== undefined ? updates.departmentId : targetUser.departmentId;
+    const matchedDept = allDepts.find((d) => d.id === newDeptId);
+    const deptName = updates.department !== undefined ? updates.department : (matchedDept ? matchedDept.name : targetUser.department);
+
     const updatedUser: User = {
       ...targetUser,
       fullName: updates.fullName !== undefined ? updates.fullName.trim() : targetUser.fullName,
@@ -549,7 +591,8 @@ class StorageService {
         currentUser.role === 'ADMIN' && updates.businessUnitId !== undefined
           ? updates.businessUnitId
           : targetUser.businessUnitId,
-      departmentId: updates.departmentId !== undefined ? updates.departmentId : targetUser.departmentId,
+      departmentId: newDeptId,
+      department: deptName,
       avatarUrl: updates.avatarUrl !== undefined ? updates.avatarUrl : targetUser.avatarUrl,
     };
 
@@ -595,7 +638,7 @@ class StorageService {
 
     const updatedUsers = allUsers.filter((u) => u.id !== userId);
     localStorage.setItem(STORAGE_KEYS.USERS, JSON.stringify(updatedUsers));
-    fetch(`/api/db/users/${userId}`, { method: 'DELETE' }).catch(() => {});
+    postgresBridge.deleteUser(userId);
 
     return { success: true };
   }
@@ -916,13 +959,177 @@ class StorageService {
     const updatedTickets = allTickets.filter((t) => t.id !== ticketId);
     localStorage.setItem(STORAGE_KEYS.TICKETS, JSON.stringify(updatedTickets));
 
-    fetch(`/api/db/tickets/${ticketId}`, { method: 'DELETE' }).catch(() => {});
+    // Delete in PostgreSQL database
+    postgresBridge.deleteTicket(ticketId);
 
     return { success: true };
   }
 
   public clearAllTickets(): void {
     localStorage.setItem(STORAGE_KEYS.TICKETS, JSON.stringify([]));
+    postgresBridge.clearAllTickets();
+  }
+
+  // ==========================================
+  // Email & POP3 Settings and Ingestion Polling
+  // ==========================================
+
+  private emailPollingTimer: any = null;
+  private pollingCallbacks: Array<(count: number) => void> = [];
+
+  /**
+   * Retrieves the current EmailSettings containing POP3 credentials (host, port, user, password, useSSL).
+   */
+  public getEmailSettings(): EmailSettings {
+    const raw = localStorage.getItem(STORAGE_KEYS.EMAIL_SETTINGS);
+    if (!raw) {
+      return { ...DEFAULT_EMAIL_SETTINGS };
+    }
+    try {
+      const parsed = JSON.parse(raw);
+      return {
+        ...DEFAULT_EMAIL_SETTINGS,
+        ...parsed,
+        user: parsed.user || parsed.username || parsed.emailAddress || DEFAULT_EMAIL_SETTINGS.user,
+        useSSL: parsed.useSSL !== undefined ? parsed.useSSL : (parsed.useSsl !== undefined ? parsed.useSsl : true),
+        host: parsed.host || DEFAULT_EMAIL_SETTINGS.host,
+        port: parsed.port || DEFAULT_EMAIL_SETTINGS.port,
+      };
+    } catch {
+      return { ...DEFAULT_EMAIL_SETTINGS };
+    }
+  }
+
+  /**
+   * Persists EmailSettings (POP3 host, port, user, password, useSSL) to storage and server.
+   */
+  public saveEmailSettings(settings: Partial<EmailSettings>): EmailSettings {
+    const current = this.getEmailSettings();
+    const updated: EmailSettings = {
+      ...current,
+      ...settings,
+      user: settings.user || settings.username || current.user,
+      username: settings.user || settings.username || current.user,
+      useSSL: settings.useSSL !== undefined ? settings.useSSL : (settings.useSsl !== undefined ? settings.useSsl : current.useSSL),
+      useSsl: settings.useSSL !== undefined ? settings.useSSL : (settings.useSsl !== undefined ? settings.useSsl : current.useSSL),
+    };
+
+    localStorage.setItem(STORAGE_KEYS.EMAIL_SETTINGS, JSON.stringify(updated));
+
+    // Also sync to backend server configuration
+    try {
+      fetch('/api/email/config', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          ...updated,
+          appPassword: updated.password || updated.appPassword,
+          username: updated.user,
+          useSsl: updated.useSSL,
+        }),
+      }).catch(() => {});
+    } catch {
+      // Ignore network errors in offline mode
+    }
+
+    // Restart background polling if interval or enabled state changed
+    if (updated.enabled) {
+      this.startBackgroundTicketPolling();
+    } else {
+      this.stopBackgroundTicketPolling();
+    }
+
+    return updated;
+  }
+
+  /**
+   * Polls inbound email tickets from the POP3 server and synchronizes them into local storage & PostgreSQL
+   */
+  public async pollInboundEmailTickets(): Promise<{ success: boolean; fetchedCount: number; newTickets: Ticket[] }> {
+    const settings = this.getEmailSettings();
+    if (!settings.enabled) {
+      return { success: true, fetchedCount: 0, newTickets: [] };
+    }
+
+    try {
+      const res = await fetch('/api/email/fetch-now', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          host: settings.host,
+          port: settings.port,
+          username: settings.user,
+          emailAddress: settings.emailAddress || settings.user,
+          appPassword: settings.password || settings.appPassword,
+          useSsl: settings.useSSL,
+          leaveCopyOnServer: settings.leaveCopyOnServer,
+          pollIntervalMinutes: settings.pollIntervalMinutes,
+        }),
+      });
+
+      if (res.ok) {
+        const data = await res.json();
+        const prevCount = this.getAllTickets().length;
+        await this.loadFromPostgres();
+        const currentTickets = this.getAllTickets();
+        const newCount = Math.max(0, currentTickets.length - prevCount);
+
+        if (newCount > 0) {
+          this.pollingCallbacks.forEach((cb) => {
+            try {
+              cb(newCount);
+            } catch {}
+          });
+        }
+
+        return {
+          success: true,
+          fetchedCount: data.fetchedCount || newCount,
+          newTickets: currentTickets.slice(-Math.max(1, newCount)),
+        };
+      }
+    } catch (err) {
+      console.warn('Background email ingestion polling warning:', err);
+    }
+
+    return { success: false, fetchedCount: 0, newTickets: [] };
+  }
+
+  /**
+   * Starts background ticket ingestion polling based on EmailSettings.pollIntervalMinutes
+   */
+  public startBackgroundTicketPolling(onNewTickets?: (count: number) => void): void {
+    if (onNewTickets && !this.pollingCallbacks.includes(onNewTickets)) {
+      this.pollingCallbacks.push(onNewTickets);
+    }
+
+    if (this.emailPollingTimer) {
+      clearInterval(this.emailPollingTimer);
+      this.emailPollingTimer = null;
+    }
+
+    const settings = this.getEmailSettings();
+    if (!settings.enabled) return;
+
+    const intervalMs = Math.max(1, settings.pollIntervalMinutes || 3) * 60 * 1000;
+
+    // Initial poll
+    this.pollInboundEmailTickets();
+
+    // Periodic poller
+    this.emailPollingTimer = setInterval(() => {
+      this.pollInboundEmailTickets();
+    }, intervalMs);
+  }
+
+  /**
+   * Stops background ticket ingestion polling
+   */
+  public stopBackgroundTicketPolling(): void {
+    if (this.emailPollingTimer) {
+      clearInterval(this.emailPollingTimer);
+      this.emailPollingTimer = null;
+    }
   }
 }
 

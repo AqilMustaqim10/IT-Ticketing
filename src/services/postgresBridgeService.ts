@@ -84,6 +84,34 @@ export const postgresBridge = {
   },
 
   /**
+   * Delete a ticket from PostgreSQL
+   */
+  deleteTicket: async (ticketId: string): Promise<boolean> => {
+    try {
+      const res = await fetch(`/api/db/tickets/${ticketId}`, {
+        method: 'DELETE',
+      });
+      return res.ok;
+    } catch {
+      return false;
+    }
+  },
+
+  /**
+   * Delete ALL tickets from PostgreSQL
+   */
+  clearAllTickets: async (): Promise<boolean> => {
+    try {
+      const res = await fetch('/api/db/tickets', {
+        method: 'DELETE',
+      });
+      return res.ok;
+    } catch {
+      return false;
+    }
+  },
+
+  /**
    * Create or update a user account in PostgreSQL
    */
   saveUser: async (user: User | Partial<User>, isNew = false): Promise<boolean> => {
@@ -128,6 +156,20 @@ export const postgresBridge = {
   deleteUser: async (userId: string): Promise<boolean> => {
     try {
       const res = await fetch(`/api/db/users/${userId}`, {
+        method: 'DELETE',
+      });
+      return res.ok;
+    } catch {
+      return false;
+    }
+  },
+
+  /**
+   * Delete department from PostgreSQL
+   */
+  deleteDepartment: async (deptId: string): Promise<boolean> => {
+    try {
+      const res = await fetch(`/api/db/departments/${deptId}`, {
         method: 'DELETE',
       });
       return res.ok;

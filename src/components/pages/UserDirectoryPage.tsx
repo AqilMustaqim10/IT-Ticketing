@@ -767,7 +767,7 @@ export const UserDirectoryPage: React.FC<UserDirectoryPageProps> = ({
                               <BUBadge businessUnit={bu} allBusinessUnits={businessUnits} size="sm" />
                             </div>
                             <div className="text-[11px] text-slate-600 font-medium">
-                              {dept ? `${dept.name} (${dept.code})` : 'General / Unassigned'}
+                              {user.department || (dept ? `${dept.name} (${dept.code})` : 'General / Unassigned')}
                             </div>
                           </td>
 

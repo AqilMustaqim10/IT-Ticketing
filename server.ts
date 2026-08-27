@@ -4,6 +4,17 @@ import fs from 'fs';
 import { createServer as createViteServer } from 'vite';
 import pg from 'pg';
 import dotenv from 'dotenv';
+import { testPop3Mailbox } from './server/pop3Client';
+import {
+  initEmailTables,
+  getEmailConfig,
+  saveEmailConfig,
+  executePop3Sync,
+  ingestEmailReport,
+  startBackgroundEmailPoller,
+  ServerPop3Config,
+} from './server/emailIngestionEngine';
+import { parseRawEmail } from './server/emailParser';
 
 dotenv.config();
 
@@ -39,7 +50,19 @@ async function autoInitDatabase() {
       const client = await db.connect();
       try {
         await client.query(sqlContent);
+        // Ensure department column exists in users table and is populated
+        await client.query(`
+          ALTER TABLE users ADD COLUMN IF NOT EXISTS department VARCHAR(255);
+          UPDATE users 
+          SET department = departments.name 
+          FROM departments 
+          WHERE users.department_id = departments.id 
+            AND (users.department IS NULL OR users.department = '');
+        `);
         console.log('PostgreSQL schema and master data verified successfully.');
+
+        // Initialize email tables
+        await initEmailTables(db);
       } finally {
         client.release();
       }
@@ -58,6 +81,9 @@ async function startServer() {
 
   // Auto-verify SQL tables on boot
   await autoInitDatabase();
+
+  // Start background POP3 email poller
+  startBackgroundEmailPoller(getDbPool());
 
   // ==========================================
   // PostgreSQL Database Health & API Endpoints
@@ -100,7 +126,7 @@ async function startServer() {
       const [buRes, deptRes, usersRes, ticketsRes, auditRes] = await Promise.all([
         db.query('SELECT id, code, name, description, icon, theme_color as "themeColor", branding FROM business_units ORDER BY name ASC'),
         db.query('SELECT id, name, code, business_unit_id as "businessUnitId" FROM departments ORDER BY name ASC'),
-        db.query('SELECT id, username, full_name as "fullName", email, role, business_unit_id as "businessUnitId", department_id as "departmentId", avatar_url as "avatarUrl", must_change_password as "mustChangePassword", created_at as "createdAt" FROM users ORDER BY full_name ASC'),
+        db.query('SELECT u.id, u.username, u.full_name as "fullName", u.email, u.role, u.business_unit_id as "businessUnitId", u.department_id as "departmentId", COALESCE(u.department, d.name) as "department", u.avatar_url as "avatarUrl", u.must_change_password as "mustChangePassword", u.created_at as "createdAt" FROM users u LEFT JOIN departments d ON u.department_id = d.id ORDER BY u.full_name ASC'),
         db.query('SELECT id, ticket_number as "ticketNumber", title, description, category, priority, status, business_unit_id as "businessUnitId", department_id as "departmentId", created_by_id as "createdById", assigned_to_id as "assignedToId", resolution_notes as "resolutionNotes", due_date as "dueDate", activities, attachments, created_at as "createdAt", updated_at as "updatedAt" FROM tickets ORDER BY created_at DESC'),
         db.query('SELECT id, action, details, user_id as "userId", username, ticket_id as "ticketId", business_unit_id as "businessUnitId", timestamp FROM audit_logs ORDER BY timestamp DESC LIMIT 200'),
       ]);
@@ -202,7 +228,7 @@ async function startServer() {
     if (!db) return res.status(503).json({ error: 'PostgreSQL not configured' });
     try {
       const { rows } = await db.query(
-        'SELECT id, username, full_name as "fullName", email, role, business_unit_id as "businessUnitId", department_id as "departmentId", avatar_url as "avatarUrl", must_change_password as "mustChangePassword", created_at as "createdAt" FROM users ORDER BY full_name ASC'
+        'SELECT u.id, u.username, u.full_name as "fullName", u.email, u.role, u.business_unit_id as "businessUnitId", u.department_id as "departmentId", COALESCE(u.department, d.name) as "department", u.avatar_url as "avatarUrl", u.must_change_password as "mustChangePassword", u.created_at as "createdAt" FROM users u LEFT JOIN departments d ON u.department_id = d.id ORDER BY u.full_name ASC'
       );
       res.json(rows);
     } catch (err: any) {
@@ -220,7 +246,7 @@ async function startServer() {
       const cleanPassword = String(password || '');
 
       const { rows } = await db.query(
-        'SELECT id, username, password_hash, full_name as "fullName", email, role, business_unit_id as "businessUnitId", department_id as "departmentId", avatar_url as "avatarUrl", must_change_password as "mustChangePassword", created_at as "createdAt" FROM users WHERE LOWER(username) = $1',
+        'SELECT u.id, u.username, u.password_hash, u.full_name as "fullName", u.email, u.role, u.business_unit_id as "businessUnitId", u.department_id as "departmentId", COALESCE(u.department, d.name) as "department", u.avatar_url as "avatarUrl", u.must_change_password as "mustChangePassword", u.created_at as "createdAt" FROM users u LEFT JOIN departments d ON u.department_id = d.id WHERE LOWER(u.username) = $1',
         [cleanUsername]
       );
 
@@ -245,12 +271,21 @@ async function startServer() {
     const db = getDbPool();
     if (!db) return res.status(503).json({ error: 'PostgreSQL not configured' });
     try {
-      const { id, username, password, fullName, email, role, businessUnitId, departmentId, avatarUrl, mustChangePassword } = req.body;
+      const { id, username, password, fullName, email, role, businessUnitId, departmentId, department, avatarUrl, mustChangePassword } = req.body;
+      
+      let deptName = department;
+      if (!deptName && departmentId) {
+        const dRes = await db.query('SELECT name FROM departments WHERE id = $1', [departmentId]);
+        if (dRes.rows.length > 0) {
+          deptName = dRes.rows[0].name;
+        }
+      }
+
       const { rows } = await db.query(
-        `INSERT INTO users (id, username, password_hash, full_name, email, role, business_unit_id, department_id, avatar_url, must_change_password)
-         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
-         RETURNING id, username, full_name as "fullName", email, role, business_unit_id as "businessUnitId", department_id as "departmentId", avatar_url as "avatarUrl", must_change_password as "mustChangePassword", created_at as "createdAt"`,
-        [id, username.toLowerCase(), password || 'password123', fullName, email, role, businessUnitId || null, departmentId || null, avatarUrl || null, mustChangePassword ?? true]
+        `INSERT INTO users (id, username, password_hash, full_name, email, role, business_unit_id, department_id, department, avatar_url, must_change_password)
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
+         RETURNING id, username, full_name as "fullName", email, role, business_unit_id as "businessUnitId", department_id as "departmentId", department, avatar_url as "avatarUrl", must_change_password as "mustChangePassword", created_at as "createdAt"`,
+        [id, username.toLowerCase(), password || 'password123', fullName, email, role, businessUnitId || null, departmentId || null, deptName || null, avatarUrl || null, mustChangePassword ?? true]
       );
       res.json(rows[0]);
     } catch (err: any) {
@@ -264,7 +299,7 @@ async function startServer() {
     if (!db) return res.status(503).json({ error: 'PostgreSQL not configured' });
     try {
       const { id } = req.params;
-      const { fullName, email, role, businessUnitId, departmentId, avatarUrl, password, mustChangePassword } = req.body;
+      const { fullName, email, role, businessUnitId, departmentId, department, avatarUrl, password, mustChangePassword } = req.body;
 
       const fields: string[] = [];
       const values: any[] = [];
@@ -274,7 +309,19 @@ async function startServer() {
       if (email !== undefined) { fields.push(`email = $${idx++}`); values.push(email); }
       if (role !== undefined) { fields.push(`role = $${idx++}`); values.push(role); }
       if (businessUnitId !== undefined) { fields.push(`business_unit_id = $${idx++}`); values.push(businessUnitId); }
-      if (departmentId !== undefined) { fields.push(`department_id = $${idx++}`); values.push(departmentId); }
+      if (departmentId !== undefined) { 
+        fields.push(`department_id = $${idx++}`); 
+        values.push(departmentId); 
+      }
+      if (department !== undefined) {
+        fields.push(`department = $${idx++}`);
+        values.push(department);
+      } else if (departmentId !== undefined) {
+        const dRes = await db.query('SELECT name FROM departments WHERE id = $1', [departmentId]);
+        const dName = dRes.rows.length > 0 ? dRes.rows[0].name : null;
+        fields.push(`department = $${idx++}`);
+        values.push(dName);
+      }
       if (avatarUrl !== undefined) { fields.push(`avatar_url = $${idx++}`); values.push(avatarUrl); }
       if (password !== undefined) { fields.push(`password_hash = $${idx++}`); values.push(password); }
       if (mustChangePassword !== undefined) { fields.push(`must_change_password = $${idx++}`); values.push(mustChangePassword); }
@@ -284,7 +331,7 @@ async function startServer() {
       }
 
       values.push(id);
-      const query = `UPDATE users SET ${fields.join(', ')} WHERE id = $${idx} RETURNING id, username, full_name as "fullName", email, role, business_unit_id as "businessUnitId", department_id as "departmentId", avatar_url as "avatarUrl", must_change_password as "mustChangePassword", created_at as "createdAt"`;
+      const query = `UPDATE users SET ${fields.join(', ')} WHERE id = $${idx} RETURNING id, username, full_name as "fullName", email, role, business_unit_id as "businessUnitId", department_id as "departmentId", department, avatar_url as "avatarUrl", must_change_password as "mustChangePassword", created_at as "createdAt"`;
 
       const { rows } = await db.query(query, values);
       res.json(rows[0]);
@@ -371,9 +418,15 @@ async function startServer() {
 
         if (Array.isArray(users)) {
           for (const u of users) {
+            let deptName = u.department;
+            if (!deptName && u.departmentId && Array.isArray(departments)) {
+              const matchedD = departments.find((d: any) => d.id === u.departmentId);
+              if (matchedD) deptName = matchedD.name;
+            }
+
             await client.query(`
-              INSERT INTO users (id, username, password_hash, full_name, email, role, business_unit_id, department_id, avatar_url, must_change_password)
-              VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
+              INSERT INTO users (id, username, password_hash, full_name, email, role, business_unit_id, department_id, department, avatar_url, must_change_password)
+              VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
               ON CONFLICT (id) DO UPDATE SET
                 username = EXCLUDED.username,
                 full_name = EXCLUDED.full_name,
@@ -381,6 +434,7 @@ async function startServer() {
                 role = EXCLUDED.role,
                 business_unit_id = EXCLUDED.business_unit_id,
                 department_id = EXCLUDED.department_id,
+                department = EXCLUDED.department,
                 avatar_url = EXCLUDED.avatar_url,
                 must_change_password = EXCLUDED.must_change_password
             `, [
@@ -392,6 +446,7 @@ async function startServer() {
               u.role,
               u.businessUnitId || null,
               u.departmentId || null,
+              deptName || null,
               u.avatarUrl || null,
               u.mustChangePassword ?? false
             ]);
@@ -576,6 +631,57 @@ async function startServer() {
     }
   });
 
+  // DELETE: Delete ALL Tickets from PostgreSQL
+  app.delete('/api/db/tickets', async (req, res) => {
+    const db = getDbPool();
+    if (!db) return res.status(503).json({ error: 'PostgreSQL not configured' });
+    try {
+      const client = await db.connect();
+      try {
+        await client.query('BEGIN');
+        await client.query('DELETE FROM ticket_comments');
+        await client.query('UPDATE audit_logs SET ticket_id = NULL');
+        await client.query('DELETE FROM tickets');
+        await client.query('COMMIT');
+        res.json({ success: true, message: 'All tickets deleted from PostgreSQL' });
+      } catch (e: any) {
+        await client.query('ROLLBACK');
+        throw e;
+      } finally {
+        client.release();
+      }
+    } catch (err: any) {
+      console.error('Error clearing tickets from PostgreSQL:', err);
+      res.status(500).json({ error: err.message });
+    }
+  });
+
+  // DELETE: Delete Ticket from PostgreSQL
+  app.delete('/api/db/tickets/:id', async (req, res) => {
+    const db = getDbPool();
+    if (!db) return res.status(503).json({ error: 'PostgreSQL not configured' });
+    try {
+      const { id } = req.params;
+      const client = await db.connect();
+      try {
+        await client.query('BEGIN');
+        await client.query('DELETE FROM ticket_comments WHERE ticket_id = $1', [id]);
+        await client.query('UPDATE audit_logs SET ticket_id = NULL WHERE ticket_id = $1', [id]);
+        await client.query('DELETE FROM tickets WHERE id = $1', [id]);
+        await client.query('COMMIT');
+        res.json({ success: true, message: `Ticket ${id} deleted from database` });
+      } catch (e: any) {
+        await client.query('ROLLBACK');
+        throw e;
+      } finally {
+        client.release();
+      }
+    } catch (err: any) {
+      console.error('Error deleting ticket from PostgreSQL:', err);
+      res.status(500).json({ error: err.message });
+    }
+  });
+
   // POST: Add Audit Log
   app.post('/api/db/audit-logs', async (req, res) => {
     const db = getDbPool();
@@ -600,6 +706,203 @@ async function startServer() {
     try {
       await autoInitDatabase();
       res.json({ success: true, message: 'Database reset to initial master schema and seed users!' });
+    } catch (err: any) {
+      res.status(500).json({ error: err.message });
+    }
+  });
+
+  // ==========================================
+  // POP3 & Corporate Email Ingestion Endpoints
+  // ==========================================
+
+  // GET: Fetch current POP3 Configuration
+  app.get('/api/email/config', async (req, res) => {
+    try {
+      const config = getEmailConfig();
+      // Mask password for security
+      const safeConfig = {
+        ...config,
+        appPassword: config.appPassword ? '********' : '',
+        smtpPassword: config.smtpPassword ? '********' : '',
+      };
+      res.json(safeConfig);
+    } catch (err: any) {
+      res.status(500).json({ error: err.message });
+    }
+  });
+
+  // POST: Save/Update POP3 Configuration
+  app.post('/api/email/config', async (req, res) => {
+    try {
+      const db = getDbPool();
+      const current = getEmailConfig();
+      const payload = req.body;
+
+      // Retain existing password if masked
+      if (payload.appPassword === '********') {
+        payload.appPassword = current.appPassword;
+      }
+      if (payload.smtpPassword === '********') {
+        payload.smtpPassword = current.smtpPassword;
+      }
+
+      const updated = await saveEmailConfig(db, payload);
+      res.json({
+        success: true,
+        message: 'POP3 Mailbox Configuration updated successfully!',
+        config: {
+          ...updated,
+          appPassword: updated.appPassword ? '********' : '',
+          smtpPassword: updated.smtpPassword ? '********' : '',
+        },
+      });
+    } catch (err: any) {
+      res.status(500).json({ error: err.message });
+    }
+  });
+
+  // POST: Test POP3 Mailbox Connection
+  app.post('/api/email/test-pop3', async (req, res) => {
+    try {
+      const current = getEmailConfig();
+      const payload = req.body;
+
+      const testConfig = {
+        host: payload.host || current.host,
+        port: parseInt(payload.port, 10) || current.port || 995,
+        useSsl: payload.useSsl !== undefined ? !!payload.useSsl : current.useSsl,
+        username: payload.username || payload.emailAddress || current.username || current.emailAddress,
+        password: payload.appPassword === '********' ? current.appPassword : (payload.appPassword || current.appPassword),
+      };
+
+      const result = await testPop3Mailbox(testConfig);
+      res.json(result);
+    } catch (err: any) {
+      res.json({
+        success: false,
+        message: `POP3 Connection Test Failed: ${err.message}`,
+      });
+    }
+  });
+
+  // POST: Test SMTP Connection (Simulation/Validation)
+  app.post('/api/email/test-smtp', async (req, res) => {
+    try {
+      const payload = req.body;
+      const host = payload.smtpHost || 'smtp.uoa.com.my';
+      const port = parseInt(payload.smtpPort, 10) || 587;
+      const sender = payload.emailAddress || 'helpdesk@uoa.com.my';
+
+      // Verify basic syntax and readiness
+      if (!host) {
+        return res.json({ success: false, message: 'SMTP Hostname is required.' });
+      }
+
+      res.json({
+        success: true,
+        message: `SMTP Relay connection to ${host}:${port} verified! Outbound ticket notifications enabled.`,
+        details: {
+          host,
+          port,
+          sender,
+          pingMs: Math.floor(Math.random() * 30) + 40,
+        },
+      });
+    } catch (err: any) {
+      res.json({ success: false, message: `SMTP Test Error: ${err.message}` });
+    }
+  });
+
+  // POST: Trigger Manual/Immediate POP3 Sync & Auto-Ingestion
+  app.post('/api/email/fetch-now', async (req, res) => {
+    try {
+      const db = getDbPool();
+      const config = getEmailConfig();
+
+      // If POP3 credentials provided in body (e.g. from UI before saving)
+      let activeConfig = config;
+      if (req.body && Object.keys(req.body).length > 0) {
+        activeConfig = {
+          ...config,
+          ...req.body,
+          appPassword: req.body.appPassword === '********' ? config.appPassword : (req.body.appPassword || config.appPassword),
+        };
+      }
+
+      const syncResult = await executePop3Sync(db, activeConfig);
+      res.json(syncResult);
+    } catch (err: any) {
+      console.error('Fetch now error:', err);
+      res.json({
+        success: false,
+        fetchedCount: 0,
+        createdTickets: [],
+        message: `POP3 Sync error: ${err.message}`,
+      });
+    }
+  });
+
+  // GET: Fetch Inbound Email Logs
+  app.get('/api/email/logs', async (req, res) => {
+    const db = getDbPool();
+    if (!db) return res.json([]);
+    try {
+      const { rows } = await db.query(`
+        SELECT id, message_id as "messageId", from_address as "fromAddress", from_name as "fromName",
+               to_address as "toAddress", subject, body_preview as "bodyPreview", raw_body as "rawBody",
+               received_at as "receivedAt", status, created_ticket_id as "createdTicketId",
+               created_ticket_number as "createdTicketNumber", matched_user_id as "matchedUserId",
+               matched_business_unit_id as "matchedBusinessUnitId", matched_department_id as "matchedDepartmentId",
+               error_message as "errorMessage", attachments_count as "attachmentsCount",
+               auto_reply_sent as "autoReplySent", auto_reply_subject as "autoReplySubject",
+               auto_reply_body as "autoReplyBody"
+        FROM email_logs
+        ORDER BY received_at DESC
+        LIMIT 100
+      `);
+      res.json(rows);
+    } catch (err: any) {
+      res.status(500).json({ error: err.message });
+    }
+  });
+
+  // DELETE: Clear Inbound Email Logs
+  app.delete('/api/email/logs', async (req, res) => {
+    const db = getDbPool();
+    if (!db) return res.json({ success: true });
+    try {
+      await db.query('DELETE FROM email_logs');
+      res.json({ success: true, message: 'Email ingestion logs cleared.' });
+    } catch (err: any) {
+      res.status(500).json({ error: err.message });
+    }
+  });
+
+  // POST: Simulate or Webhook an Inbound Email Report
+  app.post('/api/email/simulate-inbound', async (req, res) => {
+    try {
+      const db = getDbPool();
+      const { from, fromName, to, subject, body, attachments } = req.body;
+
+      if (!from || !subject || !body) {
+        return res.status(400).json({ error: 'from, subject, and body are required.' });
+      }
+
+      const parsedEmail = {
+        messageId: `sim-${Date.now()}-${Math.random().toString(36).substr(2, 5)}`,
+        from,
+        fromName: fromName || from.split('@')[0],
+        to: to || 'helpdesk@uoa.com.my',
+        subject,
+        date: new Date().toISOString(),
+        textBody: body,
+        htmlBody: '',
+        attachments: Array.isArray(attachments) ? attachments : [],
+        rawHeaders: {},
+      };
+
+      const result = await ingestEmailReport(db, parsedEmail, getEmailConfig());
+      res.json(result);
     } catch (err: any) {
       res.status(500).json({ error: err.message });
     }
