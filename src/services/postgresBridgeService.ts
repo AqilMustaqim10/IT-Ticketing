@@ -1,7 +1,9 @@
 /**
  * @file postgresBridgeService.ts
- * @description Bridge utility to test PostgreSQL connection and synchronize data with PostgreSQL backend.
+ * @description Bridge utility to communicate directly with the PostgreSQL backend API endpoints.
  */
+
+import { BusinessUnit, Department, User, Ticket, TicketActivity } from '../types';
 
 export interface DbStatus {
   connected: boolean;
@@ -10,6 +12,14 @@ export interface DbStatus {
   time?: string;
   error?: string;
   message?: string;
+}
+
+export interface DbFullPayload {
+  businessUnits: BusinessUnit[];
+  departments: Department[];
+  users: User[];
+  tickets: Ticket[];
+  auditLogs: any[];
 }
 
 export const postgresBridge = {
@@ -29,7 +39,121 @@ export const postgresBridge = {
   },
 
   /**
-   * Push all current local data (Business units, departments, users, tickets) into PostgreSQL
+   * Fetch entire dataset straight from PostgreSQL tables
+   */
+  fetchAllData: async (): Promise<DbFullPayload | null> => {
+    try {
+      const res = await fetch('/api/db/all');
+      if (!res.ok) return null;
+      return await res.json();
+    } catch {
+      return null;
+    }
+  },
+
+  /**
+   * Save / Create a new ticket directly in PostgreSQL
+   */
+  createTicket: async (ticket: Ticket): Promise<boolean> => {
+    try {
+      const res = await fetch('/api/db/tickets', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(ticket),
+      });
+      return res.ok;
+    } catch {
+      return false;
+    }
+  },
+
+  /**
+   * Update ticket fields, status, activities, resolution in PostgreSQL
+   */
+  updateTicket: async (id: string, updates: Partial<Ticket>): Promise<boolean> => {
+    try {
+      const res = await fetch(`/api/db/tickets/${id}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(updates),
+      });
+      return res.ok;
+    } catch {
+      return false;
+    }
+  },
+
+  /**
+   * Create or update a user account in PostgreSQL
+   */
+  saveUser: async (user: User | Partial<User>, isNew = false): Promise<boolean> => {
+    try {
+      if (isNew) {
+        const res = await fetch('/api/db/users', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(user),
+        });
+        return res.ok;
+      } else if (user.id) {
+        const res = await fetch(`/api/db/users/${user.id}`, {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(user),
+        });
+        if (res.ok) return true;
+        // If not found on PUT, attempt POST fallback
+        const postRes = await fetch('/api/db/users', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(user),
+        });
+        return postRes.ok;
+      } else {
+        const res = await fetch('/api/db/users', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(user),
+        });
+        return res.ok;
+      }
+    } catch {
+      return false;
+    }
+  },
+
+  /**
+   * Delete user account from PostgreSQL
+   */
+  deleteUser: async (userId: string): Promise<boolean> => {
+    try {
+      const res = await fetch(`/api/db/users/${userId}`, {
+        method: 'DELETE',
+      });
+      return res.ok;
+    } catch {
+      return false;
+    }
+  },
+
+  /**
+   * Update Business Unit branding in PostgreSQL
+   */
+  updateBusinessUnit: async (id: string, updates: Partial<BusinessUnit>): Promise<boolean> => {
+    try {
+      const res = await fetch(`/api/db/business-units/${id}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(updates),
+      });
+      return res.ok;
+    } catch {
+      return false;
+    }
+  },
+
+  /**
+   * Push all current local state to PostgreSQL (Sync button)
    */
   syncAllToPostgres: async (): Promise<{ success: boolean; message?: string; error?: string }> => {
     try {
@@ -51,6 +175,18 @@ export const postgresBridge = {
       return { success: true, message: data.message };
     } catch (err: any) {
       return { success: false, error: err.message };
+    }
+  },
+
+  /**
+   * Reset database back to SQL script defaults
+   */
+  resetAll: async (): Promise<boolean> => {
+    try {
+      const res = await fetch('/api/db/reset-all', { method: 'POST' });
+      return res.ok;
+    } catch {
+      return false;
     }
   },
 };

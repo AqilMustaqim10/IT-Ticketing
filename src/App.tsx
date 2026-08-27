@@ -123,15 +123,13 @@ export default function App() {
     }
   }, [currentUser, filters]);
 
-  // Sync data on mount and whenever user or filter configuration changes
+  // Sync data on mount from PostgreSQL and whenever user or filter configuration changes
   useEffect(() => {
-    // Ensure all legacy ticket data is removed from local storage
-    if (!localStorage.getItem('it_ticketing_tickets_cleared_v2')) {
-      storageService.clearAllTickets();
-      localStorage.setItem('it_ticketing_tickets_cleared_v2', 'true');
-    }
-
-    refreshData();
+    storageService.loadFromPostgres().then(() => {
+      refreshData();
+    }).catch(() => {
+      refreshData();
+    });
   }, [refreshData]);
 
   // When user persona changes, align the business unit filter

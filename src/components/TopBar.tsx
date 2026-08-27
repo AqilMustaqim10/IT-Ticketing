@@ -19,6 +19,7 @@ import { User, BusinessUnit, DashboardFilterState } from '../types';
 import { getBUTheme } from '../utils/themeUtils';
 import { BUBadge } from './BUBadge';
 import { postgresBridge, DbStatus } from '../services/postgresBridgeService';
+import { storageService } from '../services/storageService';
 
 interface TopBarProps {
   currentUser: User;
@@ -66,13 +67,16 @@ export const TopBar: React.FC<TopBarProps> = ({
   const handleSyncToPostgres = async () => {
     if (syncing) return;
     setSyncing(true);
-    const res = await postgresBridge.syncAllToPostgres();
+    const loaded = await storageService.loadFromPostgres();
     setSyncing(false);
-    if (res.success) {
-      alert('Success: Local records synchronized directly to PostgreSQL database!');
-      postgresBridge.checkStatus().then(setDbStatus);
+    if (loaded) {
+      window.location.reload();
     } else {
-      alert(`PostgreSQL Sync Note: ${res.error || 'Check server connection'}`);
+      const res = await postgresBridge.syncAllToPostgres();
+      if (res.success) {
+        alert('Synchronized directly with PostgreSQL database!');
+        window.location.reload();
+      }
     }
   };
 
