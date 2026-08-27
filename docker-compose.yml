@@ -1,0 +1,43 @@
+version: '3.8'
+
+services:
+  # 1. PostgreSQL Database Service
+  postgres-db:
+    image: postgres:16-alpine
+    container_name: uoa_postgres_db
+    restart: always
+    environment:
+      POSTGRES_DB: uoa_helpdesk_db
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: password123
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./init.sql:/docker-entrypoint-initdb.d/init.sql
+    networks:
+      - helpdesk-net
+
+  # 2. IT Ticketing Web App (Node + Express + React Vite)
+  helpdesk-app:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: uoa_helpdesk_app
+    restart: always
+    ports:
+      - "3000:3000"
+    environment:
+      NODE_ENV: production
+      DATABASE_URL: postgresql://postgres:password123@postgres-db:5432/uoa_helpdesk_db
+    depends_on:
+      - postgres-db
+    networks:
+      - helpdesk-net
+
+volumes:
+  postgres_data:
+
+networks:
+  helpdesk-net:
+    driver: bridge

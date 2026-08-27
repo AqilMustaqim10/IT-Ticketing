@@ -186,7 +186,10 @@ async function startServer() {
           await client.query(`
             INSERT INTO business_units (id, code, name, description)
             VALUES ($1, $2, $3, $4)
-            ON CONFLICT (id) DO UPDATE SET code = $2, name = $3, description = $4
+            ON CONFLICT (code) DO UPDATE SET
+              id = EXCLUDED.id,
+              name = EXCLUDED.name,
+              description = EXCLUDED.description
           `, [bu.id, bu.code, bu.name, bu.description || '']);
         }
       }
@@ -208,7 +211,15 @@ async function startServer() {
           await client.query(`
             INSERT INTO users (id, username, password_hash, full_name, email, role, business_unit_id, department_id, avatar_url)
             VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
-            ON CONFLICT (id) DO UPDATE SET username = $2, password_hash = $3, full_name = $4, email = $5, role = $6, business_unit_id = $7, department_id = $8, avatar_url = $9
+            ON CONFLICT (username) DO UPDATE SET
+              id = EXCLUDED.id,
+              password_hash = EXCLUDED.password_hash,
+              full_name = EXCLUDED.full_name,
+              email = EXCLUDED.email,
+              role = EXCLUDED.role,
+              business_unit_id = EXCLUDED.business_unit_id,
+              department_id = EXCLUDED.department_id,
+              avatar_url = EXCLUDED.avatar_url
           `, [u.id, u.username, u.password || 'password123', u.fullName, u.email, u.role, u.businessUnitId || null, u.departmentId || null, u.avatarUrl || null]);
         }
       }
