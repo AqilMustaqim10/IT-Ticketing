@@ -86,6 +86,7 @@ export const TicketDetailModal: React.FC<TicketDetailModalProps> = ({
   const buTheme = getBUTheme(bu, businessUnits);
   const dept = departments.find((d) => d.id === ticket.departmentId);
   const creator = allUsers.find((u) => u.id === ticket.createdById);
+  const assignee = allUsers.find((u) => u.id === ticket.assignedToId);
 
   // Filter eligible IT technicians (Admin or IT in the ticket's Business Unit)
   const eligibleTechs = allUsers.filter(
@@ -147,8 +148,10 @@ export const TicketDetailModal: React.FC<TicketDetailModalProps> = ({
     return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
   };
 
-  const formatTimeAgo = (isoString: string) => {
+  const formatTimeAgo = (isoString?: string) => {
+    if (!isoString) return 'Just now';
     const date = new Date(isoString);
+    if (isNaN(date.getTime())) return 'Recently';
     const now = new Date();
     const diffSeconds = Math.round((now.getTime() - date.getTime()) / 1000);
     const diffMinutes = Math.round(diffSeconds / 60);
@@ -161,6 +164,18 @@ export const TicketDetailModal: React.FC<TicketDetailModalProps> = ({
     if (diffHours < 24) return `${diffHours} hours ago`;
     if (diffDays === 1) return 'Yesterday';
     if (diffDays < 7) return `${diffDays} days ago`;
+    return date.toLocaleDateString('en-US', {
+      month: 'short',
+      day: 'numeric',
+      hour: '2-digit',
+      minute: '2-digit',
+    });
+  };
+
+  const formatCreatedDate = (isoString?: string) => {
+    if (!isoString) return 'Recent';
+    const date = new Date(isoString);
+    if (isNaN(date.getTime())) return 'Recent';
     return date.toLocaleDateString('en-US', {
       month: 'short',
       day: 'numeric',
@@ -239,12 +254,7 @@ export const TicketDetailModal: React.FC<TicketDetailModalProps> = ({
                   Submitted On
                 </span>
                 <span className="font-medium text-slate-700 mt-0.5 block">
-                  {new Date(ticket.createdAt).toLocaleDateString('en-US', {
-                    month: 'short',
-                    day: 'numeric',
-                    hour: '2-digit',
-                    minute: '2-digit',
-                  })}
+                  {formatCreatedDate(ticket.createdAt)}
                 </span>
               </div>
               <div>
@@ -412,60 +422,68 @@ export const TicketDetailModal: React.FC<TicketDetailModalProps> = ({
               {/* Timeline Stream */}
               <div className="space-y-2.5 max-h-56 overflow-y-auto pr-1">
                 {ticket.activities && ticket.activities.length > 0 ? (
-                  ticket.activities.map((act) => (
-                    <div
-                      key={act.id}
-                      className="p-3 rounded-xl bg-slate-50 border border-slate-200 text-xs flex items-start space-x-2.5"
-                    >
-                      <div className="w-7 h-7 rounded-full bg-slate-200 text-slate-700 font-bold flex items-center justify-center text-[10px] shrink-0">
-                        {act.userName.charAt(0)}
-                      </div>
-                      <div className="flex-1 space-y-1">
-                        <div className="flex items-center justify-between">
-                          <span className="font-bold text-slate-800">
-                            {act.userName}{' '}
-                            <span className="font-normal text-slate-400 text-[10px]">
-                              ({act.userRole})
-                            </span>
-                          </span>
-                          <span
-                            className="text-[10px] text-slate-400 font-medium inline-flex items-center gap-1 cursor-default"
-                            title={new Date(act.timestamp).toLocaleString('en-US', {
-                              dateStyle: 'medium',
-                              timeStyle: 'short',
-                            })}
-                          >
-                            <Clock className="w-2.5 h-2.5 text-slate-400" />
-                            {formatTimeAgo(act.timestamp)}
-                          </span>
-                        </div>
-                        {act.message && <p className="text-slate-600">{act.message}</p>}
+                  ticket.activities.map((act: any) => {
+                    const actName = act.userName || act.actorName || 'System';
+                    const actRole = act.userRole || act.actorRole || 'SYSTEM';
+                    const actText = act.message || act.details || '';
+                    const actInitial = actName.charAt(0).toUpperCase() || 'S';
 
-                        {/* Attachments inside activity */}
-                        {act.attachments && act.attachments.length > 0 && (
-                          <div className="grid grid-cols-2 sm:grid-cols-3 gap-2 pt-1.5">
-                            {act.attachments.map((att) => (
-                              <div
-                                key={att.id}
-                                onClick={() => setActiveLightboxImage(att)}
-                                className="group relative rounded-lg overflow-hidden border border-slate-300 cursor-pointer"
-                              >
-                                <img
-                                  src={att.url}
-                                  alt={att.name}
-                                  referrerPolicy="no-referrer"
-                                  className="w-full h-16 object-cover"
-                                />
-                                <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 flex items-center justify-center transition">
-                                  <Maximize2 className="w-4 h-4 text-white" />
-                                </div>
-                              </div>
-                            ))}
+                    return (
+                      <div
+                        key={act.id || Math.random().toString()}
+                        className="p-3 rounded-xl bg-slate-50 border border-slate-200 text-xs flex items-start space-x-2.5"
+                      >
+                        <div className="w-7 h-7 rounded-full bg-slate-200 text-slate-700 font-bold flex items-center justify-center text-[10px] shrink-0">
+                          {actInitial}
+                        </div>
+                        <div className="flex-1 space-y-1">
+                          <div className="flex items-center justify-between">
+                            <span className="font-bold text-slate-800">
+                              {actName}{' '}
+                              <span className="font-normal text-slate-400 text-[10px]">
+                                ({actRole})
+                              </span>
+                            </span>
+                            <span
+                              className="text-[10px] text-slate-400 font-medium inline-flex items-center gap-1 cursor-default"
+                              title={act.timestamp ? new Date(act.timestamp).toLocaleString() : ''}
+                            >
+                              <Clock className="w-2.5 h-2.5 text-slate-400" />
+                              {formatTimeAgo(act.timestamp)}
+                            </span>
                           </div>
-                        )}
+                          {actText && (
+                            <p className="text-slate-600 whitespace-pre-line leading-relaxed">
+                              {actText}
+                            </p>
+                          )}
+
+                          {/* Attachments inside activity */}
+                          {act.attachments && act.attachments.length > 0 && (
+                            <div className="grid grid-cols-2 sm:grid-cols-3 gap-2 pt-1.5">
+                              {act.attachments.map((att: any) => (
+                                <div
+                                  key={att.id}
+                                  onClick={() => setActiveLightboxImage(att)}
+                                  className="group relative rounded-lg overflow-hidden border border-slate-300 cursor-pointer"
+                                >
+                                  <img
+                                    src={att.url}
+                                    alt={att.name}
+                                    referrerPolicy="no-referrer"
+                                    className="w-full h-16 object-cover"
+                                  />
+                                  <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 flex items-center justify-center transition">
+                                    <Maximize2 className="w-4 h-4 text-white" />
+                                  </div>
+                                </div>
+                              ))}
+                            </div>
+                          )}
+                        </div>
                       </div>
-                    </div>
-                  ))
+                    );
+                  })
                 ) : (
                   <div className="text-xs text-slate-400 italic">No activity recorded yet.</div>
                 )}

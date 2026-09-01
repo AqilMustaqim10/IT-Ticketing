@@ -387,7 +387,10 @@ export async function ingestEmailReport(
             type: 'STATUS_CHANGE',
             actorName: 'POP3 Inbound Ingestion Service',
             actorRole: 'SYSTEM',
+            userName: 'POP3 Inbound Ingestion Service',
+            userRole: 'SYSTEM',
             details: `Ticket automatically generated from inbound email sent by ${cleanFrom} (${email.fromName || 'Staff'})`,
+            message: `Ticket automatically generated from inbound email sent by ${cleanFrom} (${email.fromName || 'Staff'})`,
             timestamp: new Date().toISOString(),
           },
         ];
