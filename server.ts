@@ -45,28 +45,34 @@ async function autoInitDatabase() {
   const db = getDbPool();
   if (!db) return;
   try {
-    const initSqlPath = path.join(process.cwd(), 'init.sql');
-    if (fs.existsSync(initSqlPath)) {
-      const sqlContent = fs.readFileSync(initSqlPath, 'utf8');
-      const client = await db.connect();
-      try {
+    const client = await db.connect();
+    try {
+      const initSqlPath = path.join(process.cwd(), 'init.sql');
+      if (fs.existsSync(initSqlPath)) {
+        const sqlContent = fs.readFileSync(initSqlPath, 'utf8');
         await client.query(sqlContent);
-        // Ensure department column exists in users table and is populated
-        await client.query(`
-          ALTER TABLE users ADD COLUMN IF NOT EXISTS department VARCHAR(255);
-          UPDATE users 
-          SET department = departments.name 
-          FROM departments 
-          WHERE users.department_id = departments.id 
-            AND (users.department IS NULL OR users.department = '');
-        `);
-        console.log('PostgreSQL schema and master data verified successfully.');
-
-        // Initialize email tables
-        await initEmailTables(db);
-      } finally {
-        client.release();
       }
+
+      // Proactively ensure and migrate columns on existing user tables
+      await client.query(`
+        ALTER TABLE users ADD COLUMN IF NOT EXISTS department VARCHAR(255);
+        ALTER TABLE users ADD COLUMN IF NOT EXISTS department_id VARCHAR(64);
+        ALTER TABLE users ADD COLUMN IF NOT EXISTS business_unit_id VARCHAR(64);
+        ALTER TABLE users ADD COLUMN IF NOT EXISTS avatar_url TEXT;
+        ALTER TABLE users ADD COLUMN IF NOT EXISTS must_change_password BOOLEAN DEFAULT FALSE;
+
+        UPDATE users 
+        SET department = departments.name 
+        FROM departments 
+        WHERE users.department_id = departments.id 
+          AND (users.department IS NULL OR users.department = '');
+      `);
+      console.log('PostgreSQL schema and master data verified successfully.');
+
+      // Initialize email tables
+      await initEmailTables(db);
+    } finally {
+      client.release();
     }
   } catch (err: any) {
     console.error('PostgreSQL autoInitDatabase notice:', err.message);
@@ -386,6 +392,15 @@ async function startServer() {
       const { businessUnits, departments, users, tickets } = req.body;
       const client = await db.connect();
       try {
+        // Ensure schema columns are migrated
+        await client.query(`
+          ALTER TABLE users ADD COLUMN IF NOT EXISTS department VARCHAR(255);
+          ALTER TABLE users ADD COLUMN IF NOT EXISTS department_id VARCHAR(64);
+          ALTER TABLE users ADD COLUMN IF NOT EXISTS business_unit_id VARCHAR(64);
+          ALTER TABLE users ADD COLUMN IF NOT EXISTS avatar_url TEXT;
+          ALTER TABLE users ADD COLUMN IF NOT EXISTS must_change_password BOOLEAN DEFAULT FALSE;
+        `);
+
         await client.query('BEGIN');
 
         if (Array.isArray(businessUnits)) {

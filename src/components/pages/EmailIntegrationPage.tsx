@@ -654,7 +654,12 @@ export const EmailIntegrationPage: React.FC<EmailIntegrationPageProps> = ({
                     value={config.password || config.appPassword || ''}
                     onChange={(e) => {
                       const val = e.target.value;
-                      setConfig({ ...config, password: val, appPassword: val });
+                      setConfig({
+                        ...config,
+                        password: val,
+                        appPassword: val,
+                        smtpPassword: config.smtpPassword ? config.smtpPassword : val,
+                      });
                     }}
                     placeholder="••••••••••••••••"
                     className="w-full px-3 py-2 text-xs rounded-xl border border-slate-200 bg-slate-50 focus:bg-white focus:ring-2 focus:ring-blue-500 focus:outline-none font-mono"
@@ -855,6 +860,50 @@ export const EmailIntegrationPage: React.FC<EmailIntegrationPageProps> = ({
                     placeholder="UOH Hospitality Support Desk"
                     className="w-full px-3 py-2 text-xs rounded-xl border border-slate-200 bg-slate-50 focus:bg-white focus:ring-2 focus:ring-blue-500 focus:outline-none"
                   />
+                </div>
+              </div>
+
+              {/* SMTP Credentials Row */}
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mt-3 pt-3 border-t border-dashed border-slate-200">
+                <div>
+                  <label className="block text-xs font-semibold text-slate-700 mb-1 flex items-center justify-between">
+                    <span>SMTP Username / Outgoing User</span>
+                    <span className="text-[10px] text-slate-400 font-normal">Defaults to POP3 User if empty</span>
+                  </label>
+                  <input
+                    id="input-smtp-username"
+                    type="text"
+                    value={config.smtpUsername || ''}
+                    onChange={(e) => setConfig({ ...config, smtpUsername: e.target.value })}
+                    placeholder={config.user || config.username || config.emailAddress || 'ticket.support@uoahospitality.com.my'}
+                    className="w-full px-3 py-2 text-xs rounded-xl border border-slate-200 bg-slate-50 focus:bg-white focus:ring-2 focus:ring-blue-500 focus:outline-none"
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-xs font-semibold text-slate-700 mb-1 flex items-center justify-between">
+                    <span>SMTP Password / Secret</span>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        const incomingPass = config.password || config.appPassword || '';
+                        setConfig({ ...config, smtpPassword: incomingPass });
+                        onShowToast('Copied incoming POP3 password to SMTP password field', 'info');
+                      }}
+                      className="text-[10px] text-blue-600 hover:text-blue-700 font-medium cursor-pointer underline"
+                    >
+                      Copy from POP3 Password
+                    </button>
+                  </label>
+                  <input
+                    id="input-smtp-password"
+                    type="password"
+                    value={config.smtpPassword || ''}
+                    onChange={(e) => setConfig({ ...config, smtpPassword: e.target.value })}
+                    placeholder="Enter SMTP password or click 'Copy from POP3'"
+                    className="w-full px-3 py-2 text-xs rounded-xl border border-slate-200 bg-slate-50 focus:bg-white focus:ring-2 focus:ring-blue-500 focus:outline-none font-mono"
+                  />
+                  <span className="text-[10px] text-slate-400 mt-0.5 block">Required for outgoing server authentication (resolves 535 error)</span>
                 </div>
               </div>
 
