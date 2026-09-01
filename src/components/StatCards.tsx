@@ -77,8 +77,8 @@ export const StatCards: React.FC<StatCardsProps> = ({
   ];
 
   return (
-    <div className="bg-white rounded-xl border border-slate-200/70 shadow-2xs overflow-hidden">
-      <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 divide-y sm:divide-y-0 sm:divide-x divide-slate-100">
+    <div className="bg-white dark:bg-slate-900 rounded-xl border border-slate-200/70 dark:border-slate-800 shadow-2xs overflow-hidden">
+      <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 divide-y sm:divide-y-0 sm:divide-x divide-slate-100 dark:divide-slate-800">
         {statItems.map((item) => {
           const isInteractive = Boolean(item.statusKey && onFilterStatus);
           const isActive = item.statusKey && activeStatus === item.statusKey;
@@ -93,22 +93,32 @@ export const StatCards: React.FC<StatCardsProps> = ({
               onClick={() => item.statusKey && onFilterStatus && onFilterStatus(item.statusKey)}
               className={`text-left p-3 sm:px-4 sm:py-3 transition-all relative ${
                 isInteractive
-                  ? 'hover:bg-slate-50/80 cursor-pointer'
+                  ? 'hover:bg-slate-50/80 dark:hover:bg-slate-800/60 cursor-pointer'
                   : 'cursor-default'
-              } ${isActive ? 'bg-slate-50/90' : ''}`}
+              } ${isActive ? 'bg-slate-50/90 dark:bg-slate-800/90' : ''}`}
             >
               {isActive && (
-                <div className="absolute bottom-0 left-0 right-0 h-0.5 bg-blue-600 rounded-full" />
+                <div className="absolute bottom-0 left-0 right-0 h-0.5 bg-blue-600 dark:bg-blue-500 rounded-full" />
               )}
               <div className="flex items-center justify-between gap-1 mb-1">
-                <span className="text-[11px] font-medium text-slate-500 truncate flex items-center gap-1.5">
+                <span className="text-[11px] font-medium text-slate-500 dark:text-slate-400 truncate flex items-center gap-1.5">
                   <span className={`w-1.5 h-1.5 rounded-full shrink-0 ${item.dotColor}`} />
                   {item.label}
                 </span>
-                <Icon className="w-3.5 h-3.5 text-slate-300 shrink-0" />
+                <Icon className="w-3.5 h-3.5 text-slate-300 dark:text-slate-600 shrink-0" />
               </div>
               <div className="flex items-baseline gap-1.5">
-                <span className={`text-xl font-bold tracking-tight ${item.textColor}`}>
+                <span className={`text-xl font-bold tracking-tight ${item.textColor} ${
+                  item.id === 'stat-total'
+                    ? 'dark:text-slate-100'
+                    : item.id === 'stat-open'
+                    ? 'dark:text-amber-400'
+                    : item.id === 'stat-inprogress'
+                    ? 'dark:text-blue-400'
+                    : item.id === 'stat-resolved'
+                    ? 'dark:text-emerald-400'
+                    : 'dark:text-purple-400'
+                }`}>
                   {item.value}
                 </span>
               </div>

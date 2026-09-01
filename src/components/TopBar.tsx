@@ -81,14 +81,14 @@ export const TopBar: React.FC<TopBarProps> = ({
   return (
     <header
       id="app-topbar"
-      className="sticky top-0 z-30 h-14 bg-white/95 backdrop-blur-md border-b border-slate-200/70 px-4 sm:px-6 flex items-center justify-between transition-all"
+      className="sticky top-0 z-30 h-14 bg-white/95 dark:bg-slate-900/95 backdrop-blur-md border-b border-slate-200/70 dark:border-slate-800 px-4 sm:px-6 flex items-center justify-between transition-all"
     >
       {/* Left: Mobile Menu & BU Context */}
       <div className="flex items-center space-x-3">
         <button
           id="btn-open-mobile-sidebar"
           onClick={onOpenMobileSidebar}
-          className="p-1.5 rounded-lg text-slate-500 hover:text-slate-900 hover:bg-slate-100 lg:hidden transition cursor-pointer"
+          className="p-1.5 rounded-lg text-slate-500 hover:text-slate-900 dark:text-slate-400 dark:hover:text-slate-100 hover:bg-slate-100 dark:hover:bg-slate-800 lg:hidden transition cursor-pointer"
           aria-label="Open Navigation"
         >
           <Menu className="w-5 h-5" />
@@ -105,21 +105,21 @@ export const TopBar: React.FC<TopBarProps> = ({
                 borderColor: theme.border,
                 color: theme.primary,
               } : undefined}
-              className="appearance-none pl-7 pr-7 py-1 text-xs font-semibold rounded-lg bg-slate-100/80 hover:bg-slate-100 border border-slate-200/80 text-slate-800 focus:outline-none focus:ring-1 focus:ring-blue-500 cursor-pointer transition"
+              className="appearance-none pl-7 pr-7 py-1 text-xs font-semibold rounded-lg bg-slate-100/80 hover:bg-slate-100 dark:bg-slate-800/90 dark:hover:bg-slate-800 border border-slate-200/80 dark:border-slate-700 text-slate-800 dark:text-slate-100 focus:outline-none focus:ring-1 focus:ring-blue-500 cursor-pointer transition"
               title="Select Business Unit Scope"
             >
-              <option value="ALL">All Business Units (Group)</option>
+              <option value="ALL" className="dark:bg-slate-800 dark:text-slate-100">All Business Units (Group)</option>
               {businessUnits.map((bu) => (
-                <option key={bu.id} value={bu.id}>
+                <option key={bu.id} value={bu.id} className="dark:bg-slate-800 dark:text-slate-100">
                   {bu.code} — {bu.name}
                 </option>
               ))}
             </select>
             <Building2
               style={filters.businessUnitId !== 'ALL' ? { color: theme.primary } : undefined}
-              className={`w-3.5 h-3.5 absolute left-2 pointer-events-none ${filters.businessUnitId === 'ALL' ? 'text-slate-500' : ''}`}
+              className={`w-3.5 h-3.5 absolute left-2 pointer-events-none ${filters.businessUnitId === 'ALL' ? 'text-slate-500 dark:text-slate-400' : ''}`}
             />
-            <ChevronDown className="w-3 h-3 text-slate-400 absolute right-2 pointer-events-none" />
+            <ChevronDown className="w-3 h-3 text-slate-400 dark:text-slate-400 absolute right-2 pointer-events-none" />
           </div>
         ) : (
           <div
@@ -136,7 +136,7 @@ export const TopBar: React.FC<TopBarProps> = ({
                 src={currentBU.branding.logoUrl}
                 alt={currentBU.code}
                 referrerPolicy="no-referrer"
-                className="h-4 w-auto max-w-[48px] object-contain rounded-xs"
+                className="h-4 w-auto max-w-[48px] object-contain rounded-xs bg-white dark:bg-slate-800 p-0.5"
               />
             ) : (
               <span
@@ -153,17 +153,17 @@ export const TopBar: React.FC<TopBarProps> = ({
       <div className="flex items-center space-x-2">
         {/* DB Connection Indicator for Admins & IT */}
         {currentUser.role !== 'USER' && (
-          <div className="hidden sm:flex items-center space-x-1.5 px-2 py-1 rounded-md text-[11px] bg-slate-50 border border-slate-200/70 text-slate-600">
-            <Database className={`w-3 h-3 ${dbStatus?.connected ? 'text-emerald-600' : 'text-slate-400'}`} />
+          <div className="hidden sm:flex items-center space-x-1.5 px-2 py-1 rounded-md text-[11px] bg-slate-50 dark:bg-slate-800/80 border border-slate-200/70 dark:border-slate-700 text-slate-600 dark:text-slate-300">
+            <Database className={`w-3 h-3 ${dbStatus?.connected ? 'text-emerald-600 dark:text-emerald-400' : 'text-slate-400'}`} />
             <span className="font-mono text-[10px]">{dbStatus?.connected ? 'PostgreSQL' : 'Local'}</span>
             <button
               id="topbar-btn-sync-db"
               onClick={handleSyncToPostgres}
               disabled={syncing}
               title="Sync current records with database"
-              className="p-0.5 ml-0.5 text-slate-400 hover:text-slate-700 rounded hover:bg-slate-200 transition cursor-pointer"
+              className="p-0.5 ml-0.5 text-slate-400 hover:text-slate-700 dark:hover:text-slate-200 rounded hover:bg-slate-200 dark:hover:bg-slate-700 transition cursor-pointer"
             >
-              <RefreshCw className={`w-2.5 h-2.5 ${syncing ? 'animate-spin text-blue-600' : ''}`} />
+              <RefreshCw className={`w-2.5 h-2.5 ${syncing ? 'animate-spin text-blue-600 dark:text-blue-400' : ''}`} />
             </button>
           </div>
         )}
@@ -172,10 +172,10 @@ export const TopBar: React.FC<TopBarProps> = ({
           <button
             id="topbar-btn-export-pdf"
             onClick={onExportPDF}
-            className="inline-flex items-center gap-1 px-2.5 py-1.5 text-xs font-medium rounded-lg text-slate-700 hover:bg-slate-100 border border-slate-200/80 transition cursor-pointer"
+            className="inline-flex items-center gap-1 px-2.5 py-1.5 text-xs font-medium rounded-lg text-slate-700 dark:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800 border border-slate-200/80 dark:border-slate-700 transition cursor-pointer"
             title="Reports & Audit Center"
           >
-            <FileDown className="w-3.5 h-3.5 text-slate-500" />
+            <FileDown className="w-3.5 h-3.5 text-slate-500 dark:text-slate-400" />
             <span className="hidden sm:inline">Reports</span>
           </button>
         )}

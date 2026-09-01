@@ -99,7 +99,7 @@ export const ChangePasswordModal: React.FC<ChangePasswordModalProps> = ({
     >
       <div
         id="modal-change-password-panel"
-        className="bg-white rounded-2xl border border-slate-200 shadow-2xl w-full max-w-md overflow-hidden animate-in fade-in zoom-in-95 duration-200"
+        className="bg-white dark:bg-slate-900 rounded-2xl border border-slate-200 dark:border-slate-800 shadow-2xl w-full max-w-md overflow-hidden animate-in fade-in zoom-in-95 duration-200"
       >
         {/* Header Bar */}
         <div className="bg-gradient-to-r from-blue-700 via-indigo-700 to-blue-800 px-6 py-5 text-white">
@@ -121,13 +121,13 @@ export const ChangePasswordModal: React.FC<ChangePasswordModalProps> = ({
         {/* Form Body */}
         <form onSubmit={handleSubmit} className="p-6 space-y-4">
           {/* Informational Advisory Notice */}
-          <div className="p-3.5 rounded-xl bg-amber-50 border border-amber-200 text-xs text-amber-900 flex items-start gap-2.5">
-            <Info className="w-4 h-4 text-amber-600 shrink-0 mt-0.5" />
+          <div className="p-3.5 rounded-xl bg-amber-50 dark:bg-amber-950/40 border border-amber-200 dark:border-amber-800 text-xs text-amber-900 dark:text-amber-200 flex items-start gap-2.5">
+            <Info className="w-4 h-4 text-amber-600 dark:text-amber-400 shrink-0 mt-0.5" />
             <div>
-              <p className="font-semibold text-amber-950">
+              <p className="font-semibold text-amber-950 dark:text-amber-100">
                 Welcome, {currentUser.fullName}!
               </p>
-              <p className="mt-1 text-amber-800 leading-relaxed text-[11px]">
+              <p className="mt-1 text-amber-800 dark:text-amber-300 leading-relaxed text-[11px]">
                 Your account was provisioned with a default password. For security reasons, you must set a private password before accessing the system.
               </p>
             </div>
@@ -137,19 +137,19 @@ export const ChangePasswordModal: React.FC<ChangePasswordModalProps> = ({
           {errorMessage && (
             <div
               id="change-pass-error-alert"
-              className="p-3 rounded-lg bg-rose-50 border border-rose-200 text-xs text-rose-800 flex items-center gap-2"
+              className="p-3 rounded-lg bg-rose-50 dark:bg-rose-950/50 border border-rose-200 dark:border-rose-800 text-xs text-rose-800 dark:text-rose-200 flex items-center gap-2"
             >
-              <AlertCircle className="w-4 h-4 text-rose-600 shrink-0" />
+              <AlertCircle className="w-4 h-4 text-rose-600 dark:text-rose-400 shrink-0" />
               <span>{errorMessage}</span>
             </div>
           )}
 
           {/* Current / Default Password */}
           <div className="space-y-1">
-            <label className="text-xs font-bold text-slate-700 flex items-center justify-between">
+            <label className="text-xs font-bold text-slate-700 dark:text-slate-300 flex items-center justify-between">
               <span>Current / Default Password</span>
-              <span className="text-[11px] font-normal text-slate-400">
-                Default is <code className="font-mono text-blue-600 font-semibold bg-blue-50 px-1 rounded">{DEFAULT_USER_PASSWORD}</code>
+              <span className="text-[11px] font-normal text-slate-400 dark:text-slate-500">
+                Default is <code className="font-mono text-blue-600 dark:text-blue-400 font-semibold bg-blue-50 dark:bg-blue-950/60 px-1 rounded">{DEFAULT_USER_PASSWORD}</code>
               </span>
             </label>
             <div className="relative">
@@ -160,13 +160,13 @@ export const ChangePasswordModal: React.FC<ChangePasswordModalProps> = ({
                 value={currentPassword}
                 onChange={(e) => setCurrentPassword(e.target.value)}
                 placeholder="Enter current default password"
-                className="w-full text-xs rounded-lg border border-slate-300 p-2.5 pr-10 text-slate-800 focus:ring-2 focus:ring-blue-500 focus:outline-none font-mono"
+                className="w-full text-xs rounded-lg border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 p-2.5 pr-10 text-slate-800 dark:text-slate-100 placeholder:text-slate-400 dark:placeholder:text-slate-500 focus:ring-2 focus:ring-blue-500 focus:outline-none font-mono"
               />
               <button
                 type="button"
                 tabIndex={-1}
                 onClick={() => setShowCurrent(!showCurrent)}
-                className="absolute inset-y-0 right-0 pr-3 flex items-center text-slate-400 hover:text-slate-600"
+                className="absolute inset-y-0 right-0 pr-3 flex items-center text-slate-400 hover:text-slate-600 dark:hover:text-slate-300 cursor-pointer"
               >
                 {showCurrent ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
               </button>
@@ -175,7 +175,7 @@ export const ChangePasswordModal: React.FC<ChangePasswordModalProps> = ({
 
           {/* New Password */}
           <div className="space-y-1">
-            <label className="text-xs font-bold text-slate-700 flex items-center gap-1">
+            <label className="text-xs font-bold text-slate-700 dark:text-slate-300 flex items-center gap-1">
               <Lock className="w-3 h-3 text-slate-400" />
               <span>New Personalized Password *</span>
             </label>
@@ -188,25 +188,25 @@ export const ChangePasswordModal: React.FC<ChangePasswordModalProps> = ({
                 value={newPassword}
                 onChange={(e) => setNewPassword(e.target.value)}
                 placeholder="Minimum 6 characters"
-                className="w-full text-xs rounded-lg border border-slate-300 p-2.5 pr-10 text-slate-800 focus:ring-2 focus:ring-blue-500 focus:outline-none font-mono"
+                className="w-full text-xs rounded-lg border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 p-2.5 pr-10 text-slate-800 dark:text-slate-100 placeholder:text-slate-400 dark:placeholder:text-slate-500 focus:ring-2 focus:ring-blue-500 focus:outline-none font-mono"
               />
               <button
                 type="button"
                 tabIndex={-1}
                 onClick={() => setShowNew(!showNew)}
-                className="absolute inset-y-0 right-0 pr-3 flex items-center text-slate-400 hover:text-slate-600"
+                className="absolute inset-y-0 right-0 pr-3 flex items-center text-slate-400 hover:text-slate-600 dark:hover:text-slate-300 cursor-pointer"
               >
                 {showNew ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
               </button>
             </div>
-            <p className="text-[10px] text-slate-500">
+            <p className="text-[10px] text-slate-500 dark:text-slate-400">
               Must not equal default password ({DEFAULT_USER_PASSWORD}).
             </p>
           </div>
 
           {/* Confirm New Password */}
           <div className="space-y-1">
-            <label className="text-xs font-bold text-slate-700 flex items-center gap-1">
+            <label className="text-xs font-bold text-slate-700 dark:text-slate-300 flex items-center gap-1">
               <ShieldCheck className="w-3 h-3 text-slate-400" />
               <span>Confirm New Password *</span>
             </label>
@@ -219,13 +219,13 @@ export const ChangePasswordModal: React.FC<ChangePasswordModalProps> = ({
                 value={confirmPassword}
                 onChange={(e) => setConfirmPassword(e.target.value)}
                 placeholder="Re-enter new password"
-                className="w-full text-xs rounded-lg border border-slate-300 p-2.5 pr-10 text-slate-800 focus:ring-2 focus:ring-blue-500 focus:outline-none font-mono"
+                className="w-full text-xs rounded-lg border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 p-2.5 pr-10 text-slate-800 dark:text-slate-100 placeholder:text-slate-400 dark:placeholder:text-slate-500 focus:ring-2 focus:ring-blue-500 focus:outline-none font-mono"
               />
               <button
                 type="button"
                 tabIndex={-1}
                 onClick={() => setShowConfirm(!showConfirm)}
-                className="absolute inset-y-0 right-0 pr-3 flex items-center text-slate-400 hover:text-slate-600"
+                className="absolute inset-y-0 right-0 pr-3 flex items-center text-slate-400 hover:text-slate-600 dark:hover:text-slate-300 cursor-pointer"
               >
                 {showConfirm ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
               </button>
@@ -233,8 +233,8 @@ export const ChangePasswordModal: React.FC<ChangePasswordModalProps> = ({
           </div>
 
           {/* Workflow Explanation Banner */}
-          <div className="p-3 rounded-lg bg-slate-50 border border-slate-200 text-[11px] text-slate-600 flex items-center gap-2">
-            <span className="font-semibold text-slate-800">Note:</span>
+          <div className="p-3 rounded-lg bg-slate-50 dark:bg-slate-800/80 border border-slate-200 dark:border-slate-700 text-[11px] text-slate-600 dark:text-slate-300 flex items-center gap-2">
+            <span className="font-semibold text-slate-800 dark:text-slate-200">Note:</span>
             <span>After setting your new password, you will be automatically signed out and will need to log in with your new credentials.</span>
           </div>
 
@@ -244,7 +244,7 @@ export const ChangePasswordModal: React.FC<ChangePasswordModalProps> = ({
               id="btn-cancel-logout"
               type="button"
               onClick={onCancelLogout}
-              className="w-full sm:w-auto sm:flex-1 py-2.5 px-4 rounded-xl border border-slate-200 hover:bg-slate-50 text-slate-600 text-xs font-semibold flex items-center justify-center gap-1.5 transition"
+              className="w-full sm:w-auto sm:flex-1 py-2.5 px-4 rounded-xl border border-slate-200 dark:border-slate-700 hover:bg-slate-50 dark:hover:bg-slate-800 text-slate-600 dark:text-slate-300 text-xs font-semibold flex items-center justify-center gap-1.5 transition cursor-pointer"
             >
               <LogOut className="w-3.5 h-3.5" />
               <span>Sign Out</span>
@@ -253,7 +253,7 @@ export const ChangePasswordModal: React.FC<ChangePasswordModalProps> = ({
               id="btn-submit-change-password"
               type="submit"
               disabled={isSubmitting}
-              className="w-full sm:w-auto sm:flex-1 py-2.5 px-4 rounded-xl bg-blue-600 hover:bg-blue-500 text-white text-xs font-bold shadow-md hover:shadow-lg flex items-center justify-center gap-2 transition disabled:opacity-50"
+              className="w-full sm:w-auto sm:flex-1 py-2.5 px-4 rounded-xl bg-blue-600 hover:bg-blue-500 text-white text-xs font-bold shadow-md hover:shadow-lg flex items-center justify-center gap-2 transition disabled:opacity-50 cursor-pointer"
             >
               <span>{isSubmitting ? 'Updating...' : 'Set Password & Log Out'}</span>
               <ArrowRight className="w-4 h-4" />

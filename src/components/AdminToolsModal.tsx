@@ -60,21 +60,21 @@ export const AdminToolsModal: React.FC<AdminToolsModalProps> = ({
   return (
     <>
       <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/40 backdrop-blur-xs animate-in fade-in duration-150">
-        <div className="bg-white rounded-2xl border border-slate-200 shadow-xl max-w-lg w-full overflow-hidden animate-in zoom-in-95 duration-150">
+        <div className="bg-white dark:bg-slate-900 rounded-2xl border border-slate-200 dark:border-slate-800 shadow-xl max-w-lg w-full overflow-hidden animate-in zoom-in-95 duration-150">
           {/* Header */}
-          <div className="flex items-center justify-between px-5 py-4 border-b border-slate-100 bg-slate-50/50">
+          <div className="flex items-center justify-between px-5 py-4 border-b border-slate-100 dark:border-slate-800 bg-slate-50/50 dark:bg-slate-850">
             <div className="flex items-center space-x-2.5">
-              <div className="p-2 rounded-xl bg-slate-900 text-white">
+              <div className="p-2 rounded-xl bg-slate-900 dark:bg-slate-800 text-white border dark:border-slate-700">
                 <ShieldAlert className="w-4 h-4" />
               </div>
               <div>
-                <h3 className="text-sm font-bold text-slate-900">Admin System Utilities</h3>
-                <p className="text-xs text-slate-500">Maintenance &amp; database operations</p>
+                <h3 className="text-sm font-bold text-slate-900 dark:text-slate-100">Admin System Utilities</h3>
+                <p className="text-xs text-slate-500 dark:text-slate-400">Maintenance &amp; database operations</p>
               </div>
             </div>
             <button
               onClick={onClose}
-              className="p-1.5 text-slate-400 hover:text-slate-600 rounded-lg hover:bg-slate-100 transition cursor-pointer"
+              className="p-1.5 text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 rounded-lg hover:bg-slate-100 dark:hover:bg-slate-800 transition cursor-pointer"
             >
               <X className="w-4 h-4" />
             </button>
@@ -83,13 +83,13 @@ export const AdminToolsModal: React.FC<AdminToolsModalProps> = ({
           {/* Body */}
           <div className="p-5 space-y-4">
             {/* Tool 1: PostgreSQL Direct Sync */}
-            <div className="p-3.5 rounded-xl border border-slate-200 bg-slate-50/50 flex items-center justify-between gap-3">
+            <div className="p-3.5 rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50/50 dark:bg-slate-800/50 flex items-center justify-between gap-3">
               <div>
                 <div className="flex items-center gap-1.5">
-                  <Database className="w-4 h-4 text-blue-600" />
-                  <span className="text-xs font-bold text-slate-800">Synchronize to PostgreSQL</span>
+                  <Database className="w-4 h-4 text-blue-600 dark:text-blue-400" />
+                  <span className="text-xs font-bold text-slate-800 dark:text-slate-200">Synchronize to PostgreSQL</span>
                 </div>
-                <p className="text-[11px] text-slate-500 mt-0.5">
+                <p className="text-[11px] text-slate-500 dark:text-slate-400 mt-0.5">
                   Push all local tickets, user profiles, and logs into your database tables.
                 </p>
               </div>
@@ -97,7 +97,7 @@ export const AdminToolsModal: React.FC<AdminToolsModalProps> = ({
                 type="button"
                 onClick={handleSyncDatabase}
                 disabled={syncing}
-                className="px-3 py-1.5 text-xs font-semibold rounded-lg bg-white border border-slate-200 text-slate-700 hover:bg-slate-50 transition shrink-0 flex items-center gap-1.5 shadow-2xs cursor-pointer disabled:opacity-50"
+                className="px-3 py-1.5 text-xs font-semibold rounded-lg bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-slate-700 dark:text-slate-200 hover:bg-slate-50 dark:hover:bg-slate-700 transition shrink-0 flex items-center gap-1.5 shadow-2xs cursor-pointer disabled:opacity-50"
               >
                 <RefreshCw className={`w-3.5 h-3.5 ${syncing ? 'animate-spin text-blue-600' : ''}`} />
                 <span>{syncing ? 'Syncing...' : 'Sync DB'}</span>
@@ -105,40 +105,40 @@ export const AdminToolsModal: React.FC<AdminToolsModalProps> = ({
             </div>
 
             {/* Tool 2: Reset User Accounts & Roles */}
-            <div className="p-3.5 rounded-xl border border-slate-200 bg-slate-50/50 flex items-center justify-between gap-3">
+            <div className="p-3.5 rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50/50 dark:bg-slate-800/50 flex items-center justify-between gap-3">
               <div>
                 <div className="flex items-center gap-1.5">
-                  <RotateCcw className="w-4 h-4 text-amber-600" />
-                  <span className="text-xs font-bold text-slate-800">Reset User Directory</span>
+                  <RotateCcw className="w-4 h-4 text-amber-600 dark:text-amber-400" />
+                  <span className="text-xs font-bold text-slate-800 dark:text-slate-200">Reset User Directory</span>
                 </div>
-                <p className="text-[11px] text-slate-500 mt-0.5">
+                <p className="text-[11px] text-slate-500 dark:text-slate-400 mt-0.5">
                   Restore default accounts (admin, IT officers, staff) and initial passwords.
                 </p>
               </div>
               <button
                 type="button"
                 onClick={() => setConfirmAction('RESET_USERS')}
-                className="px-3 py-1.5 text-xs font-semibold rounded-lg bg-white border border-amber-200 text-amber-800 hover:bg-amber-50 transition shrink-0 cursor-pointer shadow-2xs"
+                className="px-3 py-1.5 text-xs font-semibold rounded-lg bg-white dark:bg-slate-800 border border-amber-200 dark:border-amber-800 text-amber-800 dark:text-amber-300 hover:bg-amber-50 dark:hover:bg-amber-950/60 transition shrink-0 cursor-pointer shadow-2xs"
               >
                 Reset Users
               </button>
             </div>
 
             {/* Tool 3: Clear All Support Tickets */}
-            <div className="p-3.5 rounded-xl border border-rose-100 bg-rose-50/30 flex items-center justify-between gap-3">
+            <div className="p-3.5 rounded-xl border border-rose-100 dark:border-rose-900/60 bg-rose-50/30 dark:bg-rose-950/20 flex items-center justify-between gap-3">
               <div>
                 <div className="flex items-center gap-1.5">
-                  <Trash2 className="w-4 h-4 text-rose-600" />
-                  <span className="text-xs font-bold text-rose-900">Clear All Tickets</span>
+                  <Trash2 className="w-4 h-4 text-rose-600 dark:text-rose-400" />
+                  <span className="text-xs font-bold text-rose-900 dark:text-rose-200">Clear All Tickets</span>
                 </div>
-                <p className="text-[11px] text-rose-700/70 mt-0.5">
+                <p className="text-[11px] text-rose-700/70 dark:text-rose-300/70 mt-0.5">
                   Permanently delete all registered ticket data and email ingestion records.
                 </p>
               </div>
               <button
                 type="button"
                 onClick={() => setConfirmAction('CLEAR_TICKETS')}
-                className="px-3 py-1.5 text-xs font-semibold rounded-lg bg-rose-600 text-white hover:bg-rose-700 transition shrink-0 cursor-pointer shadow-2xs"
+                className="px-3 py-1.5 text-xs font-semibold rounded-lg bg-rose-600 hover:bg-rose-700 text-white transition shrink-0 cursor-pointer shadow-2xs"
               >
                 Clear All
               </button>
@@ -146,10 +146,10 @@ export const AdminToolsModal: React.FC<AdminToolsModalProps> = ({
           </div>
 
           {/* Footer */}
-          <div className="px-5 py-3 border-t border-slate-100 bg-slate-50/50 flex justify-end">
+          <div className="px-5 py-3 border-t border-slate-100 dark:border-slate-800 bg-slate-50/50 dark:bg-slate-850 flex justify-end">
             <button
               onClick={onClose}
-              className="px-4 py-1.5 text-xs font-semibold text-slate-700 hover:bg-slate-200 rounded-lg transition cursor-pointer"
+              className="px-4 py-1.5 text-xs font-semibold text-slate-700 dark:text-slate-200 hover:bg-slate-200 dark:hover:bg-slate-800 rounded-lg transition cursor-pointer"
             >
               Close
             </button>

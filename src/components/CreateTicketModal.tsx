@@ -202,33 +202,33 @@ export const CreateTicketModal: React.FC<CreateTicketModalProps> = ({
       level: 'LOW',
       label: 'Low Priority',
       desc: 'Minor issue / cosmetic / routine request',
-      border: 'border-slate-300',
-      activeBg: 'bg-slate-100 border-slate-600 text-slate-900',
-      icon: <HelpCircle className="w-4 h-4 text-slate-500" />,
+      border: 'border-slate-300 dark:border-slate-700',
+      activeBg: 'bg-slate-100 dark:bg-slate-800 border-slate-600 dark:border-slate-500 text-slate-900 dark:text-slate-100',
+      icon: <HelpCircle className="w-4 h-4 text-slate-500 dark:text-slate-400" />,
     },
     {
       level: 'MEDIUM',
       label: 'Medium Priority',
       desc: 'Standard technical glitch, workaround exists',
-      border: 'border-blue-300',
-      activeBg: 'bg-blue-50 border-blue-600 text-blue-900',
-      icon: <Clock className="w-4 h-4 text-blue-600" />,
+      border: 'border-blue-300 dark:border-blue-800',
+      activeBg: 'bg-blue-50 dark:bg-blue-950/60 border-blue-600 dark:border-blue-500 text-blue-900 dark:text-blue-200',
+      icon: <Clock className="w-4 h-4 text-blue-600 dark:text-blue-400" />,
     },
     {
       level: 'HIGH',
       label: 'High Priority',
       desc: 'Significant workflow impact or event delay',
-      border: 'border-amber-300',
-      activeBg: 'bg-amber-50 border-amber-600 text-amber-900',
-      icon: <AlertTriangle className="w-4 h-4 text-amber-600" />,
+      border: 'border-amber-300 dark:border-amber-800',
+      activeBg: 'bg-amber-50 dark:bg-amber-950/60 border-amber-600 dark:border-amber-500 text-amber-900 dark:text-amber-200',
+      icon: <AlertTriangle className="w-4 h-4 text-amber-600 dark:text-amber-400" />,
     },
     {
       level: 'URGENT',
       label: 'Urgent Priority',
       desc: 'Critical outage / plenary or live POS stopped',
-      border: 'border-rose-300',
-      activeBg: 'bg-rose-50 border-rose-600 text-rose-900',
-      icon: <Flame className="w-4 h-4 text-rose-600" />,
+      border: 'border-rose-300 dark:border-rose-800',
+      activeBg: 'bg-rose-50 dark:bg-rose-950/60 border-rose-600 dark:border-rose-500 text-rose-900 dark:text-rose-200',
+      icon: <Flame className="w-4 h-4 text-rose-600 dark:text-rose-400" />,
     },
   ];
 
@@ -239,10 +239,10 @@ export const CreateTicketModal: React.FC<CreateTicketModalProps> = ({
     >
       <div
         id="modal-create-ticket-panel"
-        className="bg-white rounded-2xl border border-slate-200 shadow-2xl w-full max-w-2xl flex flex-col overflow-hidden animate-in fade-in zoom-in-95 my-6"
+        className="bg-white dark:bg-slate-900 rounded-2xl border border-slate-200 dark:border-slate-800 shadow-2xl w-full max-w-2xl flex flex-col overflow-hidden animate-in fade-in zoom-in-95 my-6"
       >
-        {/* Header (Clean Light Theme) */}
-        <div className="px-6 py-4 bg-slate-50 text-slate-900 flex items-center justify-between border-b border-slate-200">
+        {/* Header */}
+        <div className="px-6 py-4 bg-slate-50 dark:bg-slate-850 text-slate-900 dark:text-slate-100 flex items-center justify-between border-b border-slate-200 dark:border-slate-800">
           <div className="flex items-center space-x-2.5">
             <div
               style={{ backgroundColor: theme.primary }}
@@ -252,17 +252,17 @@ export const CreateTicketModal: React.FC<CreateTicketModalProps> = ({
             </div>
             <div>
               <div className="flex items-center gap-2">
-                <h2 className="text-base font-bold text-slate-900">Create New IT Support Ticket</h2>
+                <h2 className="text-base font-bold text-slate-900 dark:text-slate-100">Create New IT Support Ticket</h2>
                 <BUBadge businessUnit={activeBU} allBusinessUnits={businessUnits} size="sm" />
               </div>
-              <p className="text-[11px] text-slate-500">
+              <p className="text-[11px] text-slate-500 dark:text-slate-400">
                 Log technical incident with picture evidence and priority level
               </p>
             </div>
           </div>
           <button
             onClick={onClose}
-            className="p-1.5 rounded-lg text-slate-400 hover:text-slate-700 hover:bg-slate-200/60 transition"
+            className="p-1.5 rounded-lg text-slate-400 hover:text-slate-700 dark:hover:text-slate-200 hover:bg-slate-200/60 dark:hover:bg-slate-800 transition cursor-pointer"
           >
             <X className="w-5 h-5" />
           </button>
@@ -271,7 +271,7 @@ export const CreateTicketModal: React.FC<CreateTicketModalProps> = ({
         {/* Form Body */}
         <form onSubmit={handleSubmit} className="p-6 space-y-4 max-h-[80vh] overflow-y-auto">
           {error && (
-            <div className="p-3 rounded-lg bg-rose-50 border border-rose-200 text-xs text-rose-700 flex items-center gap-2">
+            <div className="p-3 rounded-lg bg-rose-50 dark:bg-rose-950/50 border border-rose-200 dark:border-rose-800 text-xs text-rose-700 dark:text-rose-300 flex items-center gap-2">
               <AlertCircle className="w-4 h-4 shrink-0" />
               <span>{error}</span>
             </div>
@@ -281,7 +281,7 @@ export const CreateTicketModal: React.FC<CreateTicketModalProps> = ({
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
             {/* Business Unit */}
             <div className="space-y-1">
-              <label className="text-xs font-bold text-slate-700 flex items-center gap-1">
+              <label className="text-xs font-bold text-slate-700 dark:text-slate-300 flex items-center gap-1">
                 <Building2 className="w-3.5 h-3.5 text-slate-400" />
                 Business Unit
               </label>
@@ -290,16 +290,16 @@ export const CreateTicketModal: React.FC<CreateTicketModalProps> = ({
                   id="create-select-bu"
                   value={selectedBUId}
                   onChange={(e) => setSelectedBUId(e.target.value)}
-                  className="w-full text-xs font-semibold rounded-lg border border-slate-300 p-2 text-slate-800 focus:ring-2 focus:ring-blue-500 focus:outline-none"
+                  className="w-full text-xs font-semibold rounded-lg border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 p-2 text-slate-800 dark:text-slate-100 focus:ring-2 focus:ring-blue-500 focus:outline-none"
                 >
                   {businessUnits.map((bu) => (
-                    <option key={bu.id} value={bu.id}>
+                    <option key={bu.id} value={bu.id} className="dark:bg-slate-800">
                       {bu.code} — {bu.name}
                     </option>
                   ))}
                 </select>
               ) : (
-                <div className="text-xs font-semibold rounded-lg border border-slate-200 bg-slate-50 p-2 text-slate-700 truncate">
+                <div className="text-xs font-semibold rounded-lg border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800/60 p-2 text-slate-700 dark:text-slate-300 truncate">
                   {activeBU?.name || currentUser.businessUnitId}
                 </div>
               )}
@@ -308,19 +308,19 @@ export const CreateTicketModal: React.FC<CreateTicketModalProps> = ({
             {/* Department (Auto-derived from reporting user) */}
             <div className="space-y-1">
               <div className="flex items-center justify-between">
-                <label className="text-xs font-bold text-slate-700 flex items-center gap-1">
+                <label className="text-xs font-bold text-slate-700 dark:text-slate-300 flex items-center gap-1">
                   <Layers className="w-3.5 h-3.5 text-slate-400" />
                   Department
                 </label>
-                <span className="text-[10px] text-blue-600 font-medium bg-blue-50 px-1.5 py-0.2 rounded border border-blue-200/60">
+                <span className="text-[10px] text-blue-600 dark:text-blue-400 font-medium bg-blue-50 dark:bg-blue-950/50 px-1.5 py-0.2 rounded border border-blue-200/60 dark:border-blue-800">
                   Auto from Reporter
                 </span>
               </div>
-              <div className="text-xs font-semibold rounded-lg border border-slate-200 bg-slate-50 p-2 text-slate-700 flex items-center justify-between">
+              <div className="text-xs font-semibold rounded-lg border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800/60 p-2 text-slate-700 dark:text-slate-300 flex items-center justify-between">
                 <span className="truncate">
                   {userDept ? `${userDept.name} (${userDept.code})` : 'General Staff'}
                 </span>
-                <span className="text-[10.5px] text-slate-400 font-normal shrink-0 ml-1">
+                <span className="text-[10.5px] text-slate-400 dark:text-slate-500 font-normal shrink-0 ml-1">
                   ({currentUser.fullName})
                 </span>
               </div>
@@ -329,7 +329,7 @@ export const CreateTicketModal: React.FC<CreateTicketModalProps> = ({
 
           {/* Ticket Title */}
           <div className="space-y-1">
-            <label className="text-xs font-bold text-slate-700">
+            <label className="text-xs font-bold text-slate-700 dark:text-slate-300">
               Ticket Subject / Issue Summary *
             </label>
             <input
@@ -339,13 +339,13 @@ export const CreateTicketModal: React.FC<CreateTicketModalProps> = ({
               value={title}
               onChange={(e) => setTitle(e.target.value)}
               placeholder="e.g. POS terminal 2 in main dining room not printing kitchen slips"
-              className="w-full text-xs rounded-lg border border-slate-300 p-2.5 text-slate-800 focus:ring-2 focus:ring-blue-500 focus:outline-none"
+              className="w-full text-xs rounded-lg border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 p-2.5 text-slate-800 dark:text-slate-100 placeholder:text-slate-400 dark:placeholder:text-slate-500 focus:ring-2 focus:ring-blue-500 focus:outline-none"
             />
           </div>
 
           {/* Description */}
           <div className="space-y-1">
-            <label className="text-xs font-bold text-slate-700">
+            <label className="text-xs font-bold text-slate-700 dark:text-slate-300">
               Technical Description &amp; Reproduction Steps *
             </label>
             <textarea
@@ -355,41 +355,41 @@ export const CreateTicketModal: React.FC<CreateTicketModalProps> = ({
               value={description}
               onChange={(e) => setDescription(e.target.value)}
               placeholder="Describe what happened, error codes displayed, equipment tags, or urgency factors..."
-              className="w-full text-xs rounded-lg border border-slate-300 p-2.5 text-slate-800 focus:ring-2 focus:ring-blue-500 focus:outline-none"
+              className="w-full text-xs rounded-lg border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 p-2.5 text-slate-800 dark:text-slate-100 placeholder:text-slate-400 dark:placeholder:text-slate-500 focus:ring-2 focus:ring-blue-500 focus:outline-none"
             />
           </div>
 
           {/* Picture Attachments Section */}
           <div className="space-y-2 pt-1">
             <div className="flex items-center justify-between">
-              <label className="text-xs font-bold text-slate-700 flex items-center gap-1.5">
-                <ImageIcon className="w-4 h-4 text-blue-600" />
+              <label className="text-xs font-bold text-slate-700 dark:text-slate-300 flex items-center gap-1.5">
+                <ImageIcon className="w-4 h-4 text-blue-600 dark:text-blue-400" />
                 Attach Pictures &amp; Screenshot Evidence
-                <span className="text-[11px] font-normal text-slate-400">(Optional, Max 5MB each)</span>
+                <span className="text-[11px] font-normal text-slate-400 dark:text-slate-500">(Optional, Max 5MB each)</span>
               </label>
               {/* Quick Preset Buttons */}
               <div className="hidden sm:flex items-center gap-1.5">
-                <span className="text-[10px] text-slate-400 flex items-center gap-0.5">
+                <span className="text-[10px] text-slate-400 dark:text-slate-500 flex items-center gap-0.5">
                   <Sparkles className="w-3 h-3 text-amber-500" /> Samples:
                 </span>
                 <button
                   type="button"
                   onClick={() => addPresetScreenshot('pos')}
-                  className="px-2 py-0.5 text-[10px] font-medium bg-slate-100 hover:bg-slate-200 text-slate-700 rounded border border-slate-200 transition"
+                  className="px-2 py-0.5 text-[10px] font-medium bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-300 rounded border border-slate-200 dark:border-slate-700 transition cursor-pointer"
                 >
                   + POS Error
                 </button>
                 <button
                   type="button"
                   onClick={() => addPresetScreenshot('projector')}
-                  className="px-2 py-0.5 text-[10px] font-medium bg-slate-100 hover:bg-slate-200 text-slate-700 rounded border border-slate-200 transition"
+                  className="px-2 py-0.5 text-[10px] font-medium bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-300 rounded border border-slate-200 dark:border-slate-700 transition cursor-pointer"
                 >
                   + AV Display
                 </button>
                 <button
                   type="button"
                   onClick={() => addPresetScreenshot('encoder')}
-                  className="px-2 py-0.5 text-[10px] font-medium bg-slate-100 hover:bg-slate-200 text-slate-700 rounded border border-slate-200 transition"
+                  className="px-2 py-0.5 text-[10px] font-medium bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-300 rounded border border-slate-200 dark:border-slate-700 transition cursor-pointer"
                 >
                   + Keycard PMS
                 </button>
@@ -408,8 +408,8 @@ export const CreateTicketModal: React.FC<CreateTicketModalProps> = ({
               onClick={() => fileInputRef.current?.click()}
               className={`border-2 border-dashed rounded-xl p-4 text-center cursor-pointer transition ${
                 isDragging
-                  ? 'border-blue-500 bg-blue-50/70'
-                  : 'border-slate-300 hover:border-blue-400 bg-slate-50/50 hover:bg-slate-50'
+                  ? 'border-blue-500 bg-blue-50/70 dark:bg-blue-950/40'
+                  : 'border-slate-300 dark:border-slate-700 hover:border-blue-400 bg-slate-50/50 dark:bg-slate-800/40 hover:bg-slate-50 dark:hover:bg-slate-800/70'
               }`}
             >
               <input
@@ -422,13 +422,13 @@ export const CreateTicketModal: React.FC<CreateTicketModalProps> = ({
                 id="file-upload-input"
               />
               <div className="flex flex-col items-center justify-center space-y-1">
-                <div className="p-2 bg-blue-100 text-blue-600 rounded-full">
+                <div className="p-2 bg-blue-100 dark:bg-blue-900/60 text-blue-600 dark:text-blue-400 rounded-full">
                   <Upload className="w-5 h-5" />
                 </div>
-                <div className="text-xs font-semibold text-slate-700">
-                  <span className="text-blue-600 font-bold hover:underline">Click to browse</span> or drag and drop pictures here
+                <div className="text-xs font-semibold text-slate-700 dark:text-slate-300">
+                  <span className="text-blue-600 dark:text-blue-400 font-bold hover:underline">Click to browse</span> or drag and drop pictures here
                 </div>
-                <div className="text-[10px] text-slate-400">
+                <div className="text-[10px] text-slate-400 dark:text-slate-500">
                   Supports PNG, JPG, JPEG, WEBP, GIF, SVG screenshots and error photos
                 </div>
               </div>
@@ -440,7 +440,7 @@ export const CreateTicketModal: React.FC<CreateTicketModalProps> = ({
                 {attachments.map((att) => (
                   <div
                     key={att.id}
-                    className="relative group bg-slate-900 rounded-xl overflow-hidden border border-slate-200 shadow-xs"
+                    className="relative group bg-slate-900 rounded-xl overflow-hidden border border-slate-200 dark:border-slate-700 shadow-xs"
                   >
                     <img
                       src={att.url}
@@ -456,7 +456,7 @@ export const CreateTicketModal: React.FC<CreateTicketModalProps> = ({
                             e.stopPropagation();
                             removeAttachment(att.id);
                           }}
-                          className="p-1 bg-rose-600 hover:bg-rose-700 text-white rounded-lg shadow-sm transition"
+                          className="p-1 bg-rose-600 hover:bg-rose-700 text-white rounded-lg shadow-sm transition cursor-pointer"
                           title="Remove picture"
                         >
                           <Trash2 className="w-3.5 h-3.5" />
@@ -481,7 +481,7 @@ export const CreateTicketModal: React.FC<CreateTicketModalProps> = ({
 
           {/* Priority Matrix Selector */}
           <div className="space-y-1.5 pt-1">
-            <label className="text-xs font-bold text-slate-700">Priority Level</label>
+            <label className="text-xs font-bold text-slate-700 dark:text-slate-300">Priority Level</label>
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
               {priorityOptions.map((opt) => {
                 const isSelected = priority === opt.level;
@@ -493,13 +493,13 @@ export const CreateTicketModal: React.FC<CreateTicketModalProps> = ({
                     className={`p-2.5 rounded-xl border text-xs cursor-pointer transition flex items-start space-x-2.5 ${
                       isSelected
                         ? opt.activeBg + ' ring-1 ring-blue-500'
-                        : 'border-slate-200 hover:bg-slate-50 text-slate-700'
+                        : 'border-slate-200 dark:border-slate-700 hover:bg-slate-50 dark:hover:bg-slate-800/60 text-slate-700 dark:text-slate-300'
                     }`}
                   >
                     <div className="mt-0.5">{opt.icon}</div>
                     <div>
                       <div className="font-bold">{opt.label}</div>
-                      <div className="text-[10px] text-slate-500 leading-tight">
+                      <div className="text-[10px] text-slate-500 dark:text-slate-400 leading-tight">
                         {opt.desc}
                       </div>
                     </div>
@@ -510,10 +510,10 @@ export const CreateTicketModal: React.FC<CreateTicketModalProps> = ({
           </div>
 
           {/* Footer Form Actions */}
-          <div className="pt-3 border-t border-slate-100 flex items-center justify-between">
-            <div className="text-[11px] text-slate-400">
+          <div className="pt-3 border-t border-slate-100 dark:border-slate-800 flex items-center justify-between">
+            <div className="text-[11px] text-slate-400 dark:text-slate-500">
               {attachments.length > 0 ? (
-                <span className="text-blue-600 font-semibold flex items-center gap-1">
+                <span className="text-blue-600 dark:text-blue-400 font-semibold flex items-center gap-1">
                   <ImageIcon className="w-3.5 h-3.5" /> {attachments.length} picture(s) attached
                 </span>
               ) : (
@@ -524,7 +524,7 @@ export const CreateTicketModal: React.FC<CreateTicketModalProps> = ({
               <button
                 type="button"
                 onClick={onClose}
-                className="px-4 py-2 text-xs font-semibold rounded-lg bg-white border border-slate-300 text-slate-700 hover:bg-slate-50 transition"
+                className="px-4 py-2 text-xs font-semibold rounded-lg bg-white dark:bg-slate-800 border border-slate-300 dark:border-slate-700 text-slate-700 dark:text-slate-200 hover:bg-slate-50 dark:hover:bg-slate-700 transition cursor-pointer"
               >
                 Cancel
               </button>

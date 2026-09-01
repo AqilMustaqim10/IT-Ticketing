@@ -23,6 +23,8 @@ import {
   User as UserIcon,
   Mail,
   Wrench,
+  Moon,
+  Sun,
 } from 'lucide-react';
 import { User, BusinessUnit, AppView } from '../types';
 import { getBUTheme } from '../utils/themeUtils';
@@ -39,6 +41,8 @@ interface SidebarProps {
   onNavigate: (view: AppView) => void;
   onOpenAdminTools?: () => void;
   onLogout: () => void;
+  isDarkMode?: boolean;
+  onToggleDarkMode?: () => void;
 }
 
 export const Sidebar: React.FC<SidebarProps> = ({
@@ -53,6 +57,8 @@ export const Sidebar: React.FC<SidebarProps> = ({
   onNavigate,
   onOpenAdminTools,
   onLogout,
+  isDarkMode = false,
+  onToggleDarkMode,
 }) => {
   const currentBU = businessUnits.find((b) => b.id === currentUser.businessUnitId);
   const theme = getBUTheme(currentBU, businessUnits);
@@ -89,24 +95,24 @@ export const Sidebar: React.FC<SidebarProps> = ({
         <div
           id="sidebar-mobile-backdrop"
           onClick={onCloseMobile}
-          className="fixed inset-0 z-40 bg-slate-900/20 backdrop-blur-xs transition-opacity lg:hidden"
+          className="fixed inset-0 z-40 bg-slate-900/40 backdrop-blur-xs transition-opacity lg:hidden"
         />
       )}
 
       {/* Sidebar Container */}
       <aside
         id="app-sidebar"
-        className={`fixed top-0 bottom-0 left-0 z-50 flex flex-col bg-white border-r border-slate-200/70 text-slate-700 transition-all duration-200 ease-in-out ${
+        className={`fixed top-0 bottom-0 left-0 z-50 flex flex-col bg-white dark:bg-slate-900 border-r border-slate-200/70 dark:border-slate-800 text-slate-700 dark:text-slate-200 transition-all duration-200 ease-in-out ${
           isMobileOpen ? 'translate-x-0 w-60' : '-translate-x-full lg:translate-x-0'
         } ${isCollapsed ? 'lg:w-16' : 'lg:w-60'}`}
       >
         {/* Brand Header */}
-        <div className="h-14 flex items-center justify-between px-3 border-b border-slate-100 shrink-0">
+        <div className="h-14 flex items-center justify-between px-3 border-b border-slate-100 dark:border-slate-800 shrink-0">
           <div className="flex items-center space-x-2 overflow-hidden flex-1 min-w-0">
             {currentBU?.branding?.logoUrl ? (
               <div
                 style={{ borderColor: theme.border }}
-                className={`h-9 rounded-lg bg-white border p-1 flex items-center justify-center shrink-0 shadow-2xs ${
+                className={`h-9 rounded-lg bg-white dark:bg-slate-800 border p-1 flex items-center justify-center shrink-0 shadow-2xs ${
                   isCollapsed ? 'w-9' : 'min-w-[36px] max-w-[80px]'
                 }`}
               >
@@ -138,7 +144,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
                     {currentBU ? currentBU.code : 'Service Desk'}
                   </span>
                 </div>
-                <span className="text-[10px] text-slate-400 font-medium block truncate">
+                <span className="text-[10px] text-slate-400 dark:text-slate-500 font-medium block truncate">
                   {currentBU ? currentBU.name : 'Enterprise Portal'}
                 </span>
               </div>
@@ -147,14 +153,14 @@ export const Sidebar: React.FC<SidebarProps> = ({
 
           <button
             onClick={onCloseMobile}
-            className="p-1 rounded-md text-slate-400 hover:text-slate-700 lg:hidden"
+            className="p-1 rounded-md text-slate-400 hover:text-slate-700 dark:hover:text-slate-200 lg:hidden cursor-pointer"
           >
             <X className="w-4 h-4" />
           </button>
 
           <button
             onClick={onToggleCollapse}
-            className="hidden lg:flex p-1 rounded-md text-slate-400 hover:text-slate-700 hover:bg-slate-100 transition cursor-pointer"
+            className="hidden lg:flex p-1 rounded-md text-slate-400 hover:text-slate-700 dark:hover:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800 transition cursor-pointer"
             title={isCollapsed ? 'Expand sidebar' : 'Collapse sidebar'}
           >
             {isCollapsed ? <ChevronRight className="w-3.5 h-3.5" /> : <ChevronLeft className="w-3.5 h-3.5" />}
@@ -167,7 +173,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
             id="sidebar-btn-create-ticket"
             onClick={onOpenCreateTicket}
             style={{ backgroundColor: theme.primary }}
-            className={`w-full flex items-center justify-center gap-1.5 py-2 rounded-lg text-white font-semibold text-xs transition shadow-2xs hover:opacity-90 cursor-pointer ${
+            className={`w-full flex items-center justify-center gap-1.5 py-2 rounded-lg text-white font-semibold text-xs transition shadow-2xs hover:opacity-90 active:scale-[0.98] cursor-pointer ${
               isCollapsed ? 'px-0' : 'px-3'
             }`}
             title="Create New Ticket"
@@ -194,13 +200,13 @@ export const Sidebar: React.FC<SidebarProps> = ({
                 className={`w-full flex items-center space-x-2.5 px-2.5 py-2 rounded-lg text-xs transition cursor-pointer ${
                   isActive
                     ? 'font-semibold'
-                    : 'text-slate-600 hover:bg-slate-50 hover:text-slate-900 font-medium'
+                    : 'text-slate-600 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-800 hover:text-slate-900 dark:hover:text-white font-medium'
                 } ${isCollapsed ? 'justify-center' : ''}`}
                 title={item.label}
               >
                 <Icon
                   style={isActive ? { color: theme.primary } : undefined}
-                  className={`w-4 h-4 shrink-0 ${isActive ? '' : 'text-slate-400'}`}
+                  className={`w-4 h-4 shrink-0 ${isActive ? '' : 'text-slate-400 dark:text-slate-500'}`}
                 />
                 {!isCollapsed && <span className="truncate">{item.label}</span>}
               </button>
@@ -212,22 +218,61 @@ export const Sidebar: React.FC<SidebarProps> = ({
             <button
               id="sidebar-btn-admin-tools"
               onClick={onOpenAdminTools}
-              className={`w-full flex items-center space-x-2.5 px-2.5 py-2 rounded-lg text-xs text-slate-600 hover:bg-slate-50 hover:text-slate-900 font-medium transition cursor-pointer ${
+              className={`w-full flex items-center space-x-2.5 px-2.5 py-2 rounded-lg text-xs text-slate-600 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-800 hover:text-slate-900 dark:hover:text-white font-medium transition cursor-pointer ${
                 isCollapsed ? 'justify-center' : ''
               }`}
               title="Admin Utilities"
             >
-              <Wrench className="w-4 h-4 text-slate-400 shrink-0" />
+              <Wrench className="w-4 h-4 text-slate-400 dark:text-slate-500 shrink-0" />
               {!isCollapsed && <span className="truncate">Admin Utilities</span>}
             </button>
           )}
         </div>
 
-        {/* Clean Sidebar Footer: User Profile + Logout */}
-        <div className="p-2.5 border-t border-slate-100 bg-slate-50/40 shrink-0 space-y-2">
+        {/* Clean Sidebar Footer: Theme Toggle + User Profile + Logout */}
+        <div className="p-2.5 border-t border-slate-100 dark:border-slate-800 bg-slate-50/40 dark:bg-slate-900/60 shrink-0 space-y-2">
+          {/* Global Dark Mode Toggle */}
+          {onToggleDarkMode && (
+            <button
+              id="sidebar-btn-theme-toggle"
+              type="button"
+              role="switch"
+              aria-checked={isDarkMode}
+              aria-label={`Switch to ${isDarkMode ? 'light' : 'dark'} mode`}
+              onClick={onToggleDarkMode}
+              className={`w-full flex items-center justify-between p-2 rounded-lg border border-slate-200/80 dark:border-slate-800 bg-white dark:bg-slate-800/80 hover:bg-slate-50 dark:hover:bg-slate-800 text-slate-700 dark:text-slate-200 text-xs font-medium transition shadow-2xs cursor-pointer ${
+                isCollapsed ? 'justify-center' : ''
+              }`}
+              title={isDarkMode ? 'Switch to Light Mode' : 'Switch to Dark Mode'}
+            >
+              <div className="flex items-center space-x-2 truncate">
+                {isDarkMode ? (
+                  <Moon className="w-4 h-4 text-indigo-400 shrink-0" />
+                ) : (
+                  <Sun className="w-4 h-4 text-amber-500 shrink-0" />
+                )}
+                {!isCollapsed && (
+                  <span className="truncate text-xs font-semibold">
+                    {isDarkMode ? 'Dark Mode' : 'Light Mode'}
+                  </span>
+                )}
+              </div>
+
+              {!isCollapsed && (
+                <div
+                  className={`w-8 h-4 flex items-center rounded-full p-0.5 transition-colors ${
+                    isDarkMode ? 'bg-indigo-600 justify-end' : 'bg-slate-200 dark:bg-slate-700 justify-start'
+                  }`}
+                >
+                  <span className="w-3 h-3 rounded-full bg-white shadow-xs" />
+                </div>
+              )}
+            </button>
+          )}
+
           {/* User Profile Card */}
           <div
-            className={`w-full flex items-center space-x-2.5 p-1.5 rounded-lg bg-white border border-slate-200/60 shadow-2xs ${
+            className={`w-full flex items-center space-x-2.5 p-1.5 rounded-lg bg-white dark:bg-slate-800/90 border border-slate-200/60 dark:border-slate-700/80 shadow-2xs ${
               isCollapsed ? 'justify-center' : ''
             }`}
           >
@@ -243,10 +288,10 @@ export const Sidebar: React.FC<SidebarProps> = ({
             </div>
             {!isCollapsed && (
               <div className="truncate flex-1 min-w-0">
-                <span className="text-xs font-semibold text-slate-800 truncate block leading-tight">
+                <span className="text-xs font-semibold text-slate-800 dark:text-slate-100 truncate block leading-tight">
                   {currentUser.fullName}
                 </span>
-                <span className="text-[10px] text-slate-400 truncate block font-medium">
+                <span className="text-[10px] text-slate-400 dark:text-slate-400 truncate block font-medium">
                   {currentUser.role} • {currentBU?.code || 'Group'}
                 </span>
               </div>
@@ -257,7 +302,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
           <button
             id="sidebar-btn-logout"
             onClick={onLogout}
-            className={`w-full flex items-center justify-center gap-1.5 py-1.5 px-2 rounded-lg border border-slate-200 hover:border-rose-200 bg-white hover:bg-rose-50 text-slate-600 hover:text-rose-700 font-semibold text-xs transition shadow-2xs cursor-pointer ${
+            className={`w-full flex items-center justify-center gap-1.5 py-1.5 px-2 rounded-lg border border-slate-200 dark:border-slate-700 hover:border-rose-200 dark:hover:border-rose-800 bg-white dark:bg-slate-800 hover:bg-rose-50 dark:hover:bg-rose-950/40 text-slate-600 dark:text-slate-300 hover:text-rose-700 dark:hover:text-rose-400 font-semibold text-xs transition shadow-2xs cursor-pointer ${
               isCollapsed ? 'px-0' : ''
             }`}
             title="Sign Out of Account"
@@ -270,4 +315,5 @@ export const Sidebar: React.FC<SidebarProps> = ({
     </>
   );
 };
+
 
