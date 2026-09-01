@@ -9,6 +9,7 @@
 import pg from 'pg';
 import { ParsedEmail, ParsedEmailAttachment } from './emailParser';
 import { fetchPop3Emails, testPop3Mailbox, Pop3Options } from './pop3Client';
+import { sendSmtpEmail } from './smtpClient';
 
 export interface ServerPop3Config {
   enabled: boolean;
@@ -229,6 +230,59 @@ export function detectCategory(subject: string, body: string): string {
 }
 
 /**
+ * Generates automated acknowledgment text replacing dynamic template tags
+ */
+export function generateServerAutoReply(
+  templateSubject: string | undefined,
+  templateBody: string | undefined,
+  vars: {
+    ticketNumber: string;
+    ticketTitle: string;
+    requesterName: string;
+    requesterEmail: string;
+    businessUnitName: string;
+    businessUnitCode: string;
+    departmentName: string;
+    priority: string;
+    status: string;
+    createdAt?: string;
+  },
+  isReply: boolean = false
+): { subject: string; body: string } {
+  const defaultSubject = '[{ticketNumber}] Received: {ticketTitle}';
+  const defaultBody =
+    'Hi {requesterName},\n\nThank you for reaching out to IT Support. Your request has been successfully received and a ticket has been created with Ticket Number: [{ticketNumber}].\n\nTicket Summary:\n• Ticket Number: [{ticketNumber}]\n• Subject: {ticketTitle}\n• Business Unit: {businessUnitName} ({businessUnitCode})\n• Department: {departmentName}\n• Priority: {priority}\n• Current Status: {status}\n\nOur IT Support team has been notified and is reviewing your issue. A specialist will attend to your request shortly.\n\nBest regards,\nIT Support Desk';
+
+  const defaultReplyBody =
+    'Hi {requesterName},\n\nWe have received your update for ticket [{ticketNumber}]: "{ticketTitle}".\n\nYour message has been appended to the active support case history and our assigned IT specialist has been notified.\n\nBest regards,\nIT Support Desk';
+
+  const subTpl = isReply ? `[{ticketNumber}] Update Received: {ticketTitle}` : (templateSubject || defaultSubject);
+  const bodyTpl = isReply ? defaultReplyBody : (templateBody || defaultBody);
+
+  const replacer = (text: string) => {
+    return text
+      .replace(/{ticketNumber}/g, vars.ticketNumber)
+      .replace(/{ticketTitle}/g, vars.ticketTitle)
+      .replace(/{requesterName}/g, vars.requesterName)
+      .replace(/{requesterEmail}/g, vars.requesterEmail)
+      .replace(/{businessUnitName}/g, vars.businessUnitName)
+      .replace(/{businessUnitCode}/g, vars.businessUnitCode)
+      .replace(/{departmentName}/g, vars.departmentName)
+      .replace(/{priority}/g, vars.priority)
+      .replace(/{status}/g, vars.status)
+      .replace(/{createdAt}/g, vars.createdAt || new Date().toLocaleString());
+  };
+
+  const finalSubject = replacer(subTpl);
+  const finalBody = replacer(bodyTpl);
+
+  return {
+    subject: finalSubject.startsWith(`[${vars.ticketNumber}]`) ? finalSubject : `[${vars.ticketNumber}] ${finalSubject}`,
+    body: finalBody,
+  };
+}
+
+/**
  * Ingests a single ParsedEmail into the Ticket Database
  */
 export async function ingestEmailReport(
@@ -442,7 +496,89 @@ export async function ingestEmailReport(
         memoryProcessedMessageIds.add(email.messageId);
       }
 
-      // 5. Insert Email Log
+      // 5. Query Business Unit & Department details for template replacement
+      let buName = 'UOA Hospitality Group';
+      let buCode = 'UOA';
+      let deptNameForAck = 'IT Support & Systems';
+
+      try {
+        const buInfoRes = await client.query('SELECT name, code FROM business_units WHERE id = $1 LIMIT 1', [matchedBUId]);
+        if (buInfoRes.rows.length > 0) {
+          buName = buInfoRes.rows[0].name;
+          buCode = buInfoRes.rows[0].code;
+        }
+        const deptInfoRes = await client.query('SELECT name FROM departments WHERE id = $1 LIMIT 1', [matchedDeptId]);
+        if (deptInfoRes.rows.length > 0) {
+          deptNameForAck = deptInfoRes.rows[0].name;
+        }
+      } catch (err: any) {
+        console.warn('Failed to query BU/Dept names for auto-reply:', err.message);
+      }
+
+      // 6. Generate Automated Acknowledgment Email
+      const autoReplyData = generateServerAutoReply(
+        config.autoReplySubjectTemplate,
+        config.autoReplyBodyTemplate,
+        {
+          ticketNumber: createdTicketNumber,
+          ticketTitle: isReply ? cleanSubject : (cleanSubject.replace(/^(fwd|fw|re):\s*/i, '').trim() || 'Inbound Email Support Request'),
+          requesterName: email.fromName || cleanFrom.split('@')[0],
+          requesterEmail: cleanFrom,
+          businessUnitName: buName,
+          businessUnitCode: buCode,
+          departmentName: deptNameForAck,
+          priority: isReply ? 'MEDIUM' : (config.autoExtractPriority ? detectPriority(cleanSubject, cleanBody) : 'MEDIUM'),
+          status: 'OPEN',
+        },
+        isReply
+      );
+
+      let autoReplyActuallySent = false;
+      let autoReplySendError: string | undefined;
+
+      // 7. Dispatch Automated Email via SMTP if enabled
+      if (config.enableAutoReply) {
+        const smtpHost = config.smtpHost || config.host;
+        const smtpPort = config.smtpPort || (config.smtpUseSsl ? 465 : 587);
+        const smtpUser = config.smtpUsername || config.username || config.emailAddress;
+        const smtpPass = config.smtpPassword || config.appPassword || '';
+        const senderFrom = config.emailAddress || 'support@uohospitality.com.my';
+        const senderName = config.senderDisplayName || 'IT Support Desk';
+
+        if (smtpHost && cleanFrom) {
+          try {
+            console.log(`[SMTP Outbound] Dispatching automated acknowledgment to ${cleanFrom} for ticket ${createdTicketNumber}...`);
+            const sendResult = await sendSmtpEmail({
+              host: smtpHost,
+              port: smtpPort,
+              useSsl: config.smtpUseSsl !== undefined ? config.smtpUseSsl : (smtpPort === 465),
+              username: smtpUser,
+              password: smtpPass,
+              from: senderFrom,
+              fromName: senderName,
+              to: cleanFrom,
+              subject: autoReplyData.subject,
+              body: autoReplyData.body,
+              timeoutMs: 15000,
+            });
+
+            if (sendResult.success) {
+              autoReplyActuallySent = true;
+              console.log(`[SMTP Outbound] Successfully delivered acknowledgment email to ${cleanFrom} (${sendResult.latencyMs}ms).`);
+            } else {
+              autoReplySendError = sendResult.message;
+              console.warn(`[SMTP Outbound] Delivery failed to ${cleanFrom}:`, sendResult.message);
+            }
+          } catch (smtpErr: any) {
+            autoReplySendError = smtpErr.message;
+            console.error(`[SMTP Outbound] Exception sending auto-reply to ${cleanFrom}:`, smtpErr.message);
+          }
+        } else {
+          console.warn(`[SMTP Outbound] Skipped auto-reply: SMTP Host or recipient is missing.`);
+        }
+      }
+
+      // 8. Insert Email Log with actual dispatch status
       const emailLog = {
         id: logId,
         messageId: email.messageId,
@@ -460,14 +596,15 @@ export async function ingestEmailReport(
         matchedBusinessUnitId: matchedBUId,
         matchedDepartmentId: matchedDeptId,
         attachmentsCount: email.attachments.length,
-        autoReplySent: config.enableAutoReply,
-        autoReplySubject: `[${createdTicketNumber}] Support Request Received: ${cleanSubject}`,
-        autoReplyBody: `Hi ${email.fromName || cleanFrom},\n\nWe have received your request and logged Ticket #${createdTicketNumber}.`,
+        autoReplySent: autoReplyActuallySent,
+        autoReplySubject: autoReplyData.subject,
+        autoReplyBody: autoReplyData.body,
+        errorMessage: autoReplySendError,
       };
 
       await client.query(
-        `INSERT INTO email_logs (id, message_id, from_address, from_name, to_address, subject, body_preview, raw_body, received_at, status, created_ticket_id, created_ticket_number, matched_user_id, matched_business_unit_id, matched_department_id, attachments_count, auto_reply_sent, auto_reply_subject, auto_reply_body)
-         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, CURRENT_TIMESTAMP, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18)`,
+        `INSERT INTO email_logs (id, message_id, from_address, from_name, to_address, subject, body_preview, raw_body, received_at, status, created_ticket_id, created_ticket_number, matched_user_id, matched_business_unit_id, matched_department_id, attachments_count, auto_reply_sent, auto_reply_subject, auto_reply_body, error_message)
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, CURRENT_TIMESTAMP, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19)`,
         [
           emailLog.id,
           emailLog.messageId,
@@ -487,6 +624,7 @@ export async function ingestEmailReport(
           emailLog.autoReplySent,
           emailLog.autoReplySubject,
           emailLog.autoReplyBody,
+          emailLog.errorMessage || null,
         ]
       );
 
