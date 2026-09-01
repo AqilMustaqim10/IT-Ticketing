@@ -19,6 +19,7 @@ import { TicketDetailModal } from './components/TicketDetailModal';
 import { CreateTicketModal } from './components/CreateTicketModal';
 import { ChangePasswordModal } from './components/ChangePasswordModal';
 import { UserManagementModal } from './components/UserManagementModal';
+import { AdminToolsModal } from './components/AdminToolsModal';
 import { LoginScreen } from './components/LoginScreen';
 import { UserDirectoryPage } from './components/pages/UserDirectoryPage';
 import { PortalBrandingPage } from './components/pages/PortalBrandingPage';
@@ -83,6 +84,7 @@ export default function App() {
   const [selectedTicket, setSelectedTicket] = useState<Ticket | null>(null);
   const [isCreateTicketOpen, setIsCreateTicketOpen] = useState(false);
   const [isUserManagementOpen, setIsUserManagementOpen] = useState(false);
+  const [isAdminToolsOpen, setIsAdminToolsOpen] = useState(false);
   const [isBrandingOpen, setIsBrandingOpen] = useState(false);
   const [isGitGuideOpen, setIsGitGuideOpen] = useState(false);
   const [isExportReportOpen, setIsExportReportOpen] = useState(false);
@@ -512,8 +514,7 @@ export default function App() {
         onCloseMobile={() => setIsMobileSidebarOpen(false)}
         onOpenCreateTicket={() => setIsCreateTicketOpen(true)}
         onNavigate={(view) => setCurrentView(view)}
-        onResetData={handleResetData}
-        onClearTickets={handleClearAllTickets}
+        onOpenAdminTools={() => setIsAdminToolsOpen(true)}
         onLogout={handleLogout}
       />
 
@@ -868,6 +869,17 @@ export default function App() {
           onRegisterUser={handleRegisterUser}
           onResetPassword={handleResetUserPassword}
           onDeleteUser={handleDeleteUser}
+        />
+      )}
+
+      {/* Admin System Utilities Modal */}
+      {isAdminToolsOpen && (
+        <AdminToolsModal
+          isOpen={isAdminToolsOpen}
+          onClose={() => setIsAdminToolsOpen(false)}
+          onResetData={handleResetData}
+          onClearTickets={handleClearAllTickets}
+          onShowToast={showToast}
         />
       )}
     </div>

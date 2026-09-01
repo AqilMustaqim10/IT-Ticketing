@@ -144,7 +144,7 @@ export const TicketList: React.FC<TicketListProps> = ({
         </span>
       </div>
 
-      <div className="space-y-2">
+      <div className="bg-white rounded-xl border border-slate-200/70 divide-y divide-slate-100 overflow-hidden shadow-2xs">
         {tickets.map((ticket) => {
           const bu = businessUnits.find((b) => b.id === ticket.businessUnitId);
           const buTheme = getBUTheme(bu, businessUnits);
@@ -157,99 +157,84 @@ export const TicketList: React.FC<TicketListProps> = ({
               key={ticket.id}
               id={`ticket-card-${ticket.ticketNumber.toLowerCase()}`}
               onClick={() => onSelectTicket(ticket)}
-              className="bg-white rounded-xl p-3.5 sm:p-4 border border-slate-200/70 hover:border-slate-300 hover:shadow-2xs transition-all cursor-pointer group relative overflow-hidden"
+              className="p-4 hover:bg-slate-50/70 transition-colors cursor-pointer group relative"
             >
-              {/* Left subtle Business Unit color indicator bar */}
+              {/* Left subtle indicator on hover */}
               <div
                 style={{ backgroundColor: buTheme.primary }}
-                className="absolute left-0 top-0 bottom-0 w-1 opacity-80 group-hover:opacity-100 transition-opacity"
+                className="absolute left-0 top-0 bottom-0 w-1 opacity-0 group-hover:opacity-100 transition-opacity"
               />
 
-              {/* Row 1: Badges & Metadata */}
-              <div className="flex flex-wrap items-center justify-between gap-2 pl-1">
-                <div className="flex flex-wrap items-center gap-1.5">
-                  <span className="font-mono text-xs font-semibold text-slate-900 bg-slate-100 px-2 py-0.5 rounded">
-                    {ticket.ticketNumber}
-                  </span>
-
-                  {/* Business Unit Tag with its specific theme color */}
-                  <BUBadge businessUnit={bu} allBusinessUnits={businessUnits} size="sm" />
-
-                  {renderStatusBadge(ticket.status)}
-                  {renderPriorityBadge(ticket.priority)}
-
-                  {dept?.name && (
-                    <span className="text-xs text-slate-500 flex items-center gap-1 ml-0.5">
-                      <span className="text-slate-300">•</span>
-                      <span className="text-slate-500 font-medium">{dept.name}</span>
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2.5">
+                {/* Left Block: ID, Title, Badges */}
+                <div className="space-y-1.5 flex-1 min-w-0">
+                  <div className="flex flex-wrap items-center gap-2">
+                    <span className="font-mono text-xs font-semibold text-slate-900 bg-slate-100 px-2 py-0.5 rounded">
+                      {ticket.ticketNumber}
                     </span>
-                  )}
-                </div>
 
-                <span className="text-[11px] text-slate-400 flex items-center gap-1">
-                  <Calendar className="w-3 h-3 text-slate-300" />
-                  {formatTimeAgo(ticket.createdAt)}
-                </span>
-              </div>
+                    {/* Business Unit Tag */}
+                    <BUBadge businessUnit={bu} allBusinessUnits={businessUnits} size="sm" />
 
-              {/* Row 2: Title & Snippet */}
-              <div className="mt-2 space-y-0.5 pl-1">
-                <h3
-                  className="text-sm font-semibold text-slate-900 group-hover:underline transition"
-                  style={{ textDecorationColor: buTheme.primary }}
-                >
-                  {ticket.title}
-                </h3>
-                <p className="text-xs text-slate-500 line-clamp-1 leading-relaxed">
-                  {ticket.description}
-                </p>
-              </div>
+                    {renderStatusBadge(ticket.status)}
+                    {renderPriorityBadge(ticket.priority)}
 
-              {/* Row 3: Requester, Assignee & Action */}
-              <div className="mt-3 pt-2.5 border-t border-slate-100 flex items-center justify-between text-xs text-slate-500 pl-1">
-                <div className="flex items-center gap-3">
-                  <span className="text-[11px]">
-                    by <strong className="text-slate-700 font-medium">{creator?.fullName || 'Staff'}</strong>
-                  </span>
-                  <span className="text-slate-300">•</span>
-                  <div className="flex items-center gap-1 text-[11px]">
-                    <span className="text-slate-400">Tech:</span>
-                    {assignee ? (
-                      <span className="text-slate-700 font-medium flex items-center gap-1">
-                        <UserCheck
-                          className="w-3 h-3"
-                          style={{ color: buTheme.primary }}
-                        />
-                        {assignee.fullName.split(' ')[0]}
+                    {dept?.name && (
+                      <span className="text-xs text-slate-500 hidden md:inline-flex items-center gap-1">
+                        <span className="text-slate-300">•</span>
+                        <span>{dept.name}</span>
                       </span>
-                    ) : (
-                      <span className="text-slate-400 italic">Unassigned</span>
                     )}
                   </div>
+
+                  <h3
+                    className="text-sm font-semibold text-slate-900 group-hover:text-blue-600 transition truncate"
+                  >
+                    {ticket.title}
+                  </h3>
+
+                  <p className="text-xs text-slate-500 line-clamp-1">
+                    {ticket.description}
+                  </p>
                 </div>
 
-                <div className="flex items-center gap-2">
-                  {onDeleteTicket && (currentUser.role === 'ADMIN' || (currentUser.role === 'IT' && currentUser.businessUnitId === ticket.businessUnitId)) && (
-                    <button
-                      id={`btn-delete-ticket-${ticket.ticketNumber.toLowerCase()}`}
-                      type="button"
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        setTicketToDelete(ticket);
-                      }}
-                      className="p-1 rounded text-slate-400 hover:text-rose-600 hover:bg-rose-50 transition cursor-pointer"
-                      title="Remove Ticket"
-                    >
-                      <Trash2 className="w-3.5 h-3.5" />
-                    </button>
-                  )}
+                {/* Right Block: Creator, Tech & Date */}
+                <div className="flex sm:flex-col items-center sm:items-end justify-between sm:justify-center gap-1 shrink-0 text-xs text-slate-500 pt-2 sm:pt-0 border-t sm:border-t-0 border-slate-100">
+                  <span className="text-[11px] text-slate-400 flex items-center gap-1">
+                    <Calendar className="w-3 h-3 text-slate-300" />
+                    {formatTimeAgo(ticket.createdAt)}
+                  </span>
 
-                  <div
-                    style={{ color: buTheme.primary }}
-                    className="flex items-center gap-0.5 transition text-[11px] font-medium"
-                  >
-                    <span>View</span>
-                    <ChevronRight className="w-3.5 h-3.5" />
+                  <div className="flex items-center gap-2">
+                    <span className="text-[11px]">
+                      {creator?.fullName ? creator.fullName.split(' ')[0] : 'Staff'}
+                    </span>
+
+                    {assignee && (
+                      <span
+                        style={{ color: buTheme.primary, backgroundColor: buTheme.bgLight }}
+                        className="text-[10px] font-semibold px-1.5 py-0.5 rounded border"
+                      >
+                        {assignee.fullName.split(' ')[0]}
+                      </span>
+                    )}
+
+                    {onDeleteTicket && (currentUser.role === 'ADMIN' || (currentUser.role === 'IT' && currentUser.businessUnitId === ticket.businessUnitId)) && (
+                      <button
+                        id={`btn-delete-ticket-${ticket.ticketNumber.toLowerCase()}`}
+                        type="button"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          setTicketToDelete(ticket);
+                        }}
+                        className="p-1 rounded text-slate-400 hover:text-rose-600 hover:bg-rose-50 transition cursor-pointer"
+                        title="Remove Ticket"
+                      >
+                        <Trash2 className="w-3.5 h-3.5" />
+                      </button>
+                    )}
+
+                    <ChevronRight className="w-4 h-4 text-slate-300 group-hover:text-slate-600 group-hover:translate-x-0.5 transition" />
                   </div>
                 </div>
               </div>
