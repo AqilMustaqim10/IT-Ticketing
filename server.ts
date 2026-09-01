@@ -5,6 +5,7 @@ import { createServer as createViteServer } from 'vite';
 import pg from 'pg';
 import dotenv from 'dotenv';
 import { testPop3Mailbox } from './server/pop3Client';
+import { testSmtpServer } from './server/smtpClient';
 import {
   initEmailTables,
   getEmailConfig,
@@ -785,31 +786,36 @@ async function startServer() {
     }
   });
 
-  // POST: Test SMTP Connection (Simulation/Validation)
+  // POST: Test Genuine Outbound SMTP Connection & Authentication
   app.post('/api/email/test-smtp', async (req, res) => {
     try {
-      const payload = req.body;
-      const host = payload.smtpHost || 'smtp.uoa.com.my';
-      const port = parseInt(payload.smtpPort, 10) || 587;
-      const sender = payload.emailAddress || 'helpdesk@uoa.com.my';
+      const payload = req.body || {};
+      const current = getEmailConfig();
+      const host = payload.smtpHost || current.smtpHost || 'mail.uohospitality.com.my';
+      const port = parseInt(payload.smtpPort, 10) || current.smtpPort || 465;
+      const username = payload.smtpUsername || payload.emailAddress || current.smtpUsername || current.emailAddress;
+      const password = payload.smtpPassword === '********' ? current.smtpPassword : (payload.smtpPassword || current.smtpPassword || current.appPassword);
+      const useSsl = payload.smtpUseSsl !== undefined ? !!payload.smtpUseSsl : (port === 465);
 
-      // Verify basic syntax and readiness
-      if (!host) {
-        return res.json({ success: false, message: 'SMTP Hostname is required.' });
+      if (!host || !host.trim()) {
+        return res.json({ success: false, message: 'SMTP Hostname is required (e.g. mail.yourcompany.com).' });
       }
 
-      res.json({
-        success: true,
-        message: `SMTP Relay connection to ${host}:${port} verified! Outbound ticket notifications enabled.`,
-        details: {
-          host,
-          port,
-          sender,
-          pingMs: Math.floor(Math.random() * 30) + 40,
-        },
+      const result = await testSmtpServer({
+        host,
+        port,
+        useSsl,
+        username,
+        password,
+        senderEmail: payload.emailAddress || current.emailAddress,
       });
+
+      res.json(result);
     } catch (err: any) {
-      res.json({ success: false, message: `SMTP Test Error: ${err.message}` });
+      res.json({
+        success: false,
+        message: `SMTP Connection Probe Failed: ${err.message}`,
+      });
     }
   });
 
@@ -892,7 +898,7 @@ async function startServer() {
         messageId: `sim-${Date.now()}-${Math.random().toString(36).substr(2, 5)}`,
         from,
         fromName: fromName || from.split('@')[0],
-        to: to || 'helpdesk@uoa.com.my',
+        to: to || 'ticket.support@uohospitality.com.my',
         subject,
         date: new Date().toISOString(),
         textBody: body,

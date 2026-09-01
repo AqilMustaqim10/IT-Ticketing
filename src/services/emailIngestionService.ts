@@ -34,23 +34,23 @@ export const DEFAULT_REPLY_ACK_TEMPLATE =
 export const DEFAULT_COMPANY_MAILBOX_CONFIG: Pop3MailboxConfig = {
   enabled: true,
   provider: 'COMPANY_POP3',
-  companyDomain: 'uoa.com.my',
-  host: 'mail.uoa.com.my',
+  companyDomain: 'uohospitality.com.my',
+  host: 'mail.uohospitality.com.my',
   port: 995,
-  user: 'helpdesk@uoa.com.my',
+  user: 'ticket.support@uohospitality.com.my',
   password: '',
   useSSL: true,
   useSsl: true,
-  emailAddress: 'helpdesk@uoa.com.my',
-  username: 'helpdesk@uoa.com.my',
+  emailAddress: 'ticket.support@uohospitality.com.my',
+  username: 'ticket.support@uohospitality.com.my',
   appPassword: '',
   smtpEnabled: true,
-  smtpHost: 'smtp.uoa.com.my',
+  smtpHost: 'smtp.uohospitality.com.my',
   smtpPort: 587,
   smtpUseSsl: false,
-  smtpUsername: 'helpdesk@uoa.com.my',
+  smtpUsername: 'ticket.support@uohospitality.com.my',
   smtpPassword: '',
-  senderDisplayName: 'UOA Group IT Service Desk',
+  senderDisplayName: 'UOH Hospitality Support Desk',
   pollIntervalMinutes: 3,
   targetBusinessUnitId: 'bu-ccec',
   autoAssignCategory: true,
@@ -67,7 +67,7 @@ export const SAMPLE_TEST_EMAILS = [
     id: 'sample-1',
     from: 'aaqil.mustaqim@uoa.com.my',
     fromName: 'Aaqil Mustaqim',
-    to: 'helpdesk@uoa.com.my',
+    to: 'ticket.support@uohospitality.com.my',
     subject: 'URGENT: POS Cashier Terminal #2 in Grand Ballroom not printing receipts',
     body: `Hi IT Helpdesk,\n\nThe POS terminal cashier machine in Grand Ballroom counter 2 suddenly stopped printing receipts. We have an ongoing banquet event with 300 guests arriving.\n\nError code on screen: "PRINTER_COM_PORT_TIMEOUT - Paper Feed Offline".\nRestarting the terminal did not solve it.\n\nPlease send someone immediately.\n\nRegards,\nAaqil Mustaqim\nCCEC Events & Banquets Team`,
     suggestedBU: 'bu-ccec',
@@ -77,7 +77,7 @@ export const SAMPLE_TEST_EMAILS = [
     id: 'sample-2',
     from: 'sarah.chen@uoa.com.my',
     fromName: 'Sarah Chen',
-    to: 'helpdesk@uoa.com.my',
+    to: 'ticket.support@uohospitality.com.my',
     subject: 'Outlook email login failed - Password synchronization error',
     body: `Hello Support Team,\n\nI am unable to log into my Microsoft Outlook 365 client this morning. It keeps asking for password repeatedly and returns error code "0x80040115".\n\nI have tried clearing browser cookies and reconnecting to corporate Wi-Fi.\n\nThank you,\nSarah Chen\nSales & Marketing Department`,
     suggestedBU: 'bu-ccec',
@@ -87,7 +87,7 @@ export const SAMPLE_TEST_EMAILS = [
     id: 'sample-3',
     from: 'david.kumar@uoa.com.my',
     fromName: 'David Kumar',
-    to: 'helpdesk@uoa.com.my',
+    to: 'ticket.support@uohospitality.com.my',
     subject: 'Kitchen Display System (KDS) screen flickering in Main Kitchen',
     body: `Hi IT Team,\n\nThe Kitchen Display System touch monitor at the hot line station has been flickering constantly since 11:00 AM. Orders are lagging by 3-4 minutes on the screen.\n\nOutlet: Botanica Deli & Dining\nStation: Kitchen Expediter 01\n\nAppreciate quick assistance before lunch rush.\n\nDavid Kumar\nF&B Kitchen Operations`,
     suggestedBU: 'bu-fnb',
@@ -97,7 +97,7 @@ export const SAMPLE_TEST_EMAILS = [
     id: 'sample-4',
     from: 'lisa.wong@uoa.com.my',
     fromName: 'Lisa Wong',
-    to: 'helpdesk@uoa.com.my',
+    to: 'ticket.support@uohospitality.com.my',
     subject: 'Front Desk Keycard encoder not connecting to Opera PMS',
     body: `Dear IT Support,\n\nOur VingCard RFID keycard encoder at Front Desk Terminal 3 is showing "Interface Not Responding" when attempting to make new guest room keys for Level 12.\n\nGuest check-in queue is building up.\n\nLisa Wong\nFront Office Supervisor\nHotel Suites`,
     suggestedBU: 'bu-hotel',
@@ -107,7 +107,7 @@ export const SAMPLE_TEST_EMAILS = [
     id: 'sample-5',
     from: 'kevin.tan@uoa.com.my',
     fromName: 'Kevin Tan',
-    to: 'helpdesk@uoa.com.my',
+    to: 'ticket.support@uohospitality.com.my',
     subject: 'Access Card Reader offline at Level 8 Laboratory turnstile',
     body: `Hi IT Helpdesk,\n\nThe biometric card reader door access at Level 8 KLBS Laboratory turnstile is beeping red and not granting entry to researchers.\n\nStaff are currently unable to access the clean room zone.\n\nKevin Tan\nFacility & Operations\nKLBS`,
     suggestedBU: 'bu-klbs',
@@ -292,10 +292,10 @@ class EmailIngestionService {
     };
   }> {
     if (!config.host || !config.host.trim()) {
-      return { success: false, message: 'Corporate Mail Server Host is required (e.g. mail.uoa.com.my or outlook.office365.com)' };
+      return { success: false, message: 'Corporate Mail Server Host is required (e.g. mail.yourcompany.com)' };
     }
     if (!config.emailAddress || !config.emailAddress.includes('@')) {
-      return { success: false, message: 'A valid company email address is required (e.g. helpdesk@uoa.com.my).' };
+      return { success: false, message: 'A valid company email address is required (e.g. helpdesk@yourcompany.com).' };
     }
 
     try {
@@ -305,29 +305,19 @@ class EmailIngestionService {
         body: JSON.stringify(config),
       });
       if (res.ok) {
-        const data = await res.json();
-        return data;
+        return await res.json();
       }
-    } catch {
-      // Offline fallback simulation
+      const errText = await res.text();
+      return {
+        success: false,
+        message: `POP3 Probe Server returned HTTP ${res.status}: ${errText || res.statusText}`,
+      };
+    } catch (err: any) {
+      return {
+        success: false,
+        message: `Failed to execute POP3 probe: ${err.message}`,
+      };
     }
-
-    const startTime = Date.now();
-    await new Promise((resolve) => setTimeout(resolve, 800));
-    const ping = Math.max(38, Date.now() - startTime);
-
-    return {
-      success: true,
-      message: `Successfully connected to Corporate Server ${config.host}:${config.port} (${config.useSsl ? 'SSL/TLS' : 'Standard'})! Mailbox authenticated.`,
-      details: {
-        host: config.host,
-        port: config.port,
-        ssl: config.useSsl,
-        mailboxStatus: 'ONLINE (Corporate Inbound Mailbox Connected)',
-        pendingMessagesCount: Math.floor(Math.random() * 4) + 1,
-        pingMs: ping,
-      },
-    };
   }
 
   /**
@@ -339,12 +329,16 @@ class EmailIngestionService {
     details?: {
       host: string;
       port: number;
-      sender: string;
+      ssl?: boolean;
+      sender?: string;
+      banner?: string;
+      authenticated?: boolean;
       pingMs: number;
+      serverCapabilities?: string[];
     };
   }> {
     if (!config.smtpHost || !config.smtpHost.trim()) {
-      return { success: false, message: 'SMTP Hostname is required (e.g. smtp.uoa.com.my or smtp.office365.com)' };
+      return { success: false, message: 'SMTP Hostname is required (e.g. mail.yourcompany.com)' };
     }
 
     try {
@@ -354,27 +348,19 @@ class EmailIngestionService {
         body: JSON.stringify(config),
       });
       if (res.ok) {
-        const data = await res.json();
-        return data;
+        return await res.json();
       }
-    } catch {
-      // Offline fallback
+      const errText = await res.text();
+      return {
+        success: false,
+        message: `SMTP Probe Server returned HTTP ${res.status}: ${errText || res.statusText}`,
+      };
+    } catch (err: any) {
+      return {
+        success: false,
+        message: `Failed to execute SMTP probe: ${err.message}`,
+      };
     }
-
-    const startTime = Date.now();
-    await new Promise((resolve) => setTimeout(resolve, 600));
-    const ping = Math.max(42, Date.now() - startTime);
-
-    return {
-      success: true,
-      message: `Outbound SMTP relay ${config.smtpHost}:${config.smtpPort || 587} verified! Ready for auto-replies.`,
-      details: {
-        host: config.smtpHost,
-        port: config.smtpPort || 587,
-        sender: config.senderDisplayName ? `${config.senderDisplayName} <${config.emailAddress}>` : config.emailAddress,
-        pingMs: ping,
-      },
-    };
   }
 
   /**
@@ -402,30 +388,24 @@ class EmailIngestionService {
         await this.fetchServerLogs();
         return data;
       }
+      return {
+        success: false,
+        fetchedCount: 0,
+        createdTickets: [],
+        skippedCount: 0,
+        totalInMailbox: 0,
+        message: `Server returned status HTTP ${res.status}`,
+      };
     } catch (err: any) {
-      console.warn('fetchPop3EmailsNow network notice:', err.message);
+      return {
+        success: false,
+        fetchedCount: 0,
+        createdTickets: [],
+        skippedCount: 0,
+        totalInMailbox: 0,
+        message: `POP3 Fetch network error: ${err.message}`,
+      };
     }
-
-    // Fallback: simulate pull from sample dataset
-    const simRes = await this.syncSampleMailbox();
-    const allUsers = storageService.getAllUsers();
-    return {
-      success: true,
-      fetchedCount: simRes.processedCount,
-      createdTickets: simRes.createdTickets.map((t) => {
-        const u = allUsers.find((user) => user.id === t.createdById);
-        return {
-          ticketId: t.id,
-          ticketNumber: t.ticketNumber,
-          isReply: false,
-          subject: t.title,
-          from: u?.email || 'user@uoa.com.my',
-        };
-      }),
-      skippedCount: 0,
-      totalInMailbox: simRes.processedCount,
-      message: `Processed ${simRes.processedCount} email report(s) into tickets.`,
-    };
   }
 
   /**

@@ -147,6 +147,28 @@ export const TicketDetailModal: React.FC<TicketDetailModalProps> = ({
     return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
   };
 
+  const formatTimeAgo = (isoString: string) => {
+    const date = new Date(isoString);
+    const now = new Date();
+    const diffSeconds = Math.round((now.getTime() - date.getTime()) / 1000);
+    const diffMinutes = Math.round(diffSeconds / 60);
+    const diffHours = Math.round(diffMinutes / 60);
+    const diffDays = Math.round(diffHours / 24);
+
+    if (diffSeconds < 45) return 'Just now';
+    if (diffMinutes < 60) return `${diffMinutes}m ago`;
+    if (diffHours === 1) return '1 hour ago';
+    if (diffHours < 24) return `${diffHours} hours ago`;
+    if (diffDays === 1) return 'Yesterday';
+    if (diffDays < 7) return `${diffDays} days ago`;
+    return date.toLocaleDateString('en-US', {
+      month: 'short',
+      day: 'numeric',
+      hour: '2-digit',
+      minute: '2-digit',
+    });
+  };
+
   return (
     <>
       <div
@@ -406,11 +428,15 @@ export const TicketDetailModal: React.FC<TicketDetailModalProps> = ({
                               ({act.userRole})
                             </span>
                           </span>
-                          <span className="text-[10px] text-slate-400">
-                            {new Date(act.timestamp).toLocaleTimeString('en-US', {
-                              hour: '2-digit',
-                              minute: '2-digit',
+                          <span
+                            className="text-[10px] text-slate-400 font-medium inline-flex items-center gap-1 cursor-default"
+                            title={new Date(act.timestamp).toLocaleString('en-US', {
+                              dateStyle: 'medium',
+                              timeStyle: 'short',
                             })}
+                          >
+                            <Clock className="w-2.5 h-2.5 text-slate-400" />
+                            {formatTimeAgo(act.timestamp)}
                           </span>
                         </div>
                         {act.message && <p className="text-slate-600">{act.message}</p>}

@@ -36,6 +36,9 @@ import {
   Layers,
   Settings,
   ChevronRight,
+  Pencil,
+  Unlock,
+  X,
 } from 'lucide-react';
 import {
   BusinessUnit,
@@ -50,7 +53,6 @@ import {
 import {
   emailIngestionService,
   DEFAULT_COMPANY_MAILBOX_CONFIG,
-  SAMPLE_TEST_EMAILS,
   DEFAULT_AUTO_REPLY_SUBJECT_TEMPLATE,
   DEFAULT_AUTO_REPLY_BODY_TEMPLATE,
 } from '../../services/emailIngestionService';
@@ -86,8 +88,8 @@ export const EmailIntegrationPage: React.FC<EmailIntegrationPageProps> = ({
       ...fromStorage,
       host: fromStorage.host || fromService.host,
       port: fromStorage.port || fromService.port,
-      user: fromStorage.user || fromStorage.username || fromService.username || 'helpdesk@uoa.com.my',
-      username: fromStorage.user || fromStorage.username || fromService.username || 'helpdesk@uoa.com.my',
+      user: fromStorage.user || fromStorage.username || fromService.username || 'ticket.support@uohospitality.com.my',
+      username: fromStorage.user || fromStorage.username || fromService.username || 'ticket.support@uohospitality.com.my',
       password: fromStorage.password || fromStorage.appPassword || fromService.appPassword || '',
       appPassword: fromStorage.password || fromStorage.appPassword || fromService.appPassword || '',
       useSSL: fromStorage.useSSL !== undefined ? fromStorage.useSSL : fromService.useSsl,
@@ -108,29 +110,17 @@ export const EmailIntegrationPage: React.FC<EmailIntegrationPageProps> = ({
     details?: any;
   } | null>(null);
 
-  // Inbound Email Simulator / Test Bench State
-  const [simulatorFrom, setSimulatorFrom] = useState(
-    SAMPLE_TEST_EMAILS[0].from
-  );
-  const [simulatorFromName, setSimulatorFromName] = useState(SAMPLE_TEST_EMAILS[0].fromName);
-  const [simulatorTo, setSimulatorTo] = useState(config.emailAddress || 'helpdesk@uoa.com.my');
-  const [simulatorSubject, setSimulatorSubject] = useState(SAMPLE_TEST_EMAILS[0].subject);
-  const [simulatorBody, setSimulatorBody] = useState(SAMPLE_TEST_EMAILS[0].body);
-  const [isProcessingEmail, setIsProcessingEmail] = useState(false);
-  const [lastProcessedResult, setLastProcessedResult] = useState<{
-    ticket?: Ticket;
-    isReply?: boolean;
-    message: string;
-    log: InboundEmailLog;
-  } | null>(null);
-
   // Inbound Email Logs
   const [logs, setLogs] = useState<InboundEmailLog[]>(() => emailIngestionService.getLogs());
   const [selectedLog, setSelectedLog] = useState<InboundEmailLog | null>(null);
   const [isSyncingMailbox, setIsSyncingMailbox] = useState(false);
 
   // Active Tab
-  const [activeTab, setActiveTab] = useState<'SETTINGS' | 'TEST_BENCH' | 'LOGS'>('SETTINGS');
+  const [activeTab, setActiveTab] = useState<'SETTINGS' | 'LOGS'>('SETTINGS');
+
+  // Security Locking: Admin must explicitly click "Edit Configuration" before inputs become editable
+  const [isEditing, setIsEditing] = useState(false);
+  const [originalConfig, setOriginalConfig] = useState<Pop3MailboxConfig | null>(null);
 
   useEffect(() => {
     // Load config from storageService and backend
@@ -193,6 +183,20 @@ export const EmailIntegrationPage: React.FC<EmailIntegrationPageProps> = ({
     });
   };
 
+  const handleStartEdit = () => {
+    setOriginalConfig({ ...config });
+    setIsEditing(true);
+    onShowToast('Mailbox settings unlocked for editing. Make your changes and click Save.', 'info');
+  };
+
+  const handleCancelEdit = () => {
+    if (originalConfig) {
+      setConfig({ ...originalConfig });
+    }
+    setIsEditing(false);
+    onShowToast('Edit canceled. Restored original configuration.', 'info');
+  };
+
   const handleSaveSettings = async () => {
     const emailSettings: EmailSettings = {
       host: config.host,
@@ -227,7 +231,9 @@ export const EmailIntegrationPage: React.FC<EmailIntegrationPageProps> = ({
 
     storageService.saveEmailSettings(emailSettings);
     await emailIngestionService.saveConfig(config);
-    onShowToast('POP3 Email Settings saved & integrated into background ticket ingestion!', 'success');
+    setIsEditing(false);
+    setOriginalConfig({ ...config });
+    onShowToast('POP3 Email Settings saved & configuration locked successfully!', 'success');
   };
 
   const handleTestInboundConnection = async () => {
@@ -268,54 +274,6 @@ export const EmailIntegrationPage: React.FC<EmailIntegrationPageProps> = ({
     }
   };
 
-  const handleApplyPresetScenario = (scenario: typeof SAMPLE_TEST_EMAILS[0]) => {
-    setSimulatorFrom(scenario.from);
-    setSimulatorFromName(scenario.fromName);
-    setSimulatorTo(config.emailAddress || 'helpdesk@uoa.com.my');
-    setSimulatorSubject(scenario.subject);
-    setSimulatorBody(scenario.body);
-    onShowToast(`Loaded company scenario: "${scenario.subject.substring(0, 35)}..."`, 'info');
-  };
-
-  const handleSendTestEmail = async () => {
-    if (!simulatorFrom.trim() || !simulatorSubject.trim()) {
-      onShowToast('Please enter both sender company email and subject.', 'error');
-      return;
-    }
-
-    setIsProcessingEmail(true);
-    setLastProcessedResult(null);
-
-    try {
-      // Simulate natural email transmission delay
-      await new Promise((resolve) => setTimeout(resolve, 500));
-
-      const res = await emailIngestionService.processInboundEmail({
-        from: simulatorFrom,
-        fromName: simulatorFromName,
-        to: simulatorTo,
-        subject: simulatorSubject,
-        body: simulatorBody,
-      });
-
-      setLastProcessedResult(res);
-      refreshLogs();
-
-      if (res.success) {
-        onShowToast(res.message, 'success');
-        if (onTicketCreated) {
-          onTicketCreated();
-        }
-      } else {
-        onShowToast(res.message, 'error');
-      }
-    } catch (err: any) {
-      onShowToast(err.message || 'Failed to process email', 'error');
-    } finally {
-      setIsProcessingEmail(false);
-    }
-  };
-
   const handleSyncMailboxNow = async () => {
     setIsSyncingMailbox(true);
     try {
@@ -348,21 +306,21 @@ export const EmailIntegrationPage: React.FC<EmailIntegrationPageProps> = ({
     const updated: Pop3MailboxConfig = {
       ...config,
       provider: 'COMPANY_POP3',
-      companyDomain: 'uoa.com.my',
-      host: 'mail.uoa.com.my',
+      companyDomain: 'uohospitality.com.my',
+      host: 'mail.uohospitality.com.my',
       port: 995,
       useSsl: true,
-      emailAddress: 'helpdesk@uoa.com.my',
-      username: 'helpdesk@uoa.com.my',
+      emailAddress: 'ticket.support@uohospitality.com.my',
+      username: 'ticket.support@uohospitality.com.my',
       smtpEnabled: true,
-      smtpHost: 'smtp.uoa.com.my',
+      smtpHost: 'smtp.uohospitality.com.my',
       smtpPort: 587,
       smtpUseSsl: false,
-      senderDisplayName: 'UOA Group IT Helpdesk',
+      senderDisplayName: 'UOH Hospitality Support Desk',
     };
     setConfig(updated);
     emailIngestionService.saveConfig(updated);
-    onShowToast('Applied UOA Group Corporate Mail Server Preset (mail.uoa.com.my:995 SSL)', 'info');
+    onShowToast('Applied UOH Hospitality Mail Server Preset (mail.uohospitality.com.my:995 SSL)', 'info');
   };
 
   const handleSetOffice365Preset = () => {
@@ -425,7 +383,7 @@ export const EmailIntegrationPage: React.FC<EmailIntegrationPageProps> = ({
               </span>
             </div>
             <p className="text-xs text-slate-500 mt-1 max-w-2xl">
-              Connect your company email account (e.g. <strong>{config.emailAddress || 'helpdesk@uoa.com.my'}</strong>). 
+              Connect your company email account (e.g. <strong>{config.emailAddress || 'ticket.support@uohospitality.com.my'}</strong>). 
               Inbound emails from staff are automatically converted into support tickets with business unit assignment, department routing, and auto-acknowledgment replies.
             </p>
           </div>
@@ -496,27 +454,14 @@ export const EmailIntegrationPage: React.FC<EmailIntegrationPageProps> = ({
 
         <button
           type="button"
-          onClick={() => setActiveTab('TEST_BENCH')}
-          className={`px-4 py-2 rounded-xl text-xs font-bold transition flex items-center gap-2 cursor-pointer whitespace-nowrap ${
-            activeTab === 'TEST_BENCH'
-              ? 'bg-slate-900 text-white shadow-xs'
-              : 'bg-white text-slate-600 hover:bg-slate-100 border border-slate-200'
-          }`}
-        >
-          <Zap className="w-4 h-4 text-amber-400" />
-          <span>Company Mailbox Simulator &amp; Test Bench</span>
-        </button>
-
-        <button
-          type="button"
           onClick={() => setActiveTab('LOGS')}
           className={`px-4 py-2 rounded-xl text-xs font-bold transition flex items-center gap-2 cursor-pointer whitespace-nowrap ${
             activeTab === 'LOGS'
-              ? 'bg-slate-900 text-white shadow-xs'
+              ? 'bg-blue-600 text-white shadow-xs'
               : 'bg-white text-slate-600 hover:bg-slate-100 border border-slate-200'
           }`}
         >
-          <Inbox className="w-4 h-4 text-blue-400" />
+          <Inbox className="w-4 h-4" />
           <span>Inbound Email Audit Logs ({logs.length})</span>
         </button>
       </div>
@@ -525,20 +470,90 @@ export const EmailIntegrationPage: React.FC<EmailIntegrationPageProps> = ({
       {activeTab === 'SETTINGS' && (
         <div className="space-y-6">
           <div className="bg-white rounded-2xl border border-slate-200 p-6 shadow-xs space-y-6">
+            {/* Top Edit / Lock Status Header Banner */}
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 pb-4 border-b border-slate-100">
+              <div>
+                <div className="flex items-center gap-2.5">
+                  <h2 className="text-sm font-bold text-slate-900 flex items-center gap-2">
+                    <Server className="w-4 h-4 text-blue-600" />
+                    <span>Company Mailbox Ingestion Gateway</span>
+                  </h2>
+                  <span
+                    className={`inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[11px] font-semibold border ${
+                      isEditing
+                        ? 'bg-amber-50 text-amber-700 border-amber-200'
+                        : 'bg-emerald-50 text-emerald-700 border-emerald-200'
+                    }`}
+                  >
+                    {isEditing ? (
+                      <>
+                        <Unlock className="w-3 h-3 text-amber-600" />
+                        <span>Editing Mode Active</span>
+                      </>
+                    ) : (
+                      <>
+                        <Lock className="w-3 h-3 text-emerald-600" />
+                        <span>Configuration Protected (Locked)</span>
+                      </>
+                    )}
+                  </span>
+                </div>
+                <p className="text-xs text-slate-500 mt-1">
+                  {isEditing
+                    ? 'Modify the POP3/IMAP host, port, credentials, and SMTP settings below, then click "Save & Lock".'
+                    : 'Settings are protected against accidental mistypes. Click "Edit Configuration" to make changes.'}
+                </p>
+              </div>
+
+              {/* Action Buttons: Edit Configuration vs Save & Cancel */}
+              <div className="flex items-center gap-2 shrink-0">
+                {!isEditing ? (
+                  <button
+                    id="btn-unlock-email-settings"
+                    type="button"
+                    onClick={handleStartEdit}
+                    className="inline-flex items-center gap-1.5 px-4 py-2 text-xs font-bold rounded-xl bg-blue-50 text-blue-700 hover:bg-blue-100 border border-blue-200 transition cursor-pointer shadow-2xs"
+                  >
+                    <Pencil className="w-3.5 h-3.5" />
+                    <span>Edit Configuration</span>
+                  </button>
+                ) : (
+                  <>
+                    <button
+                      id="btn-cancel-email-settings"
+                      type="button"
+                      onClick={handleCancelEdit}
+                      className="inline-flex items-center gap-1.5 px-3.5 py-2 text-xs font-semibold rounded-xl text-slate-600 hover:bg-slate-100 border border-slate-200 transition cursor-pointer"
+                    >
+                      <X className="w-3.5 h-3.5" />
+                      <span>Cancel</span>
+                    </button>
+                    <button
+                      id="btn-save-email-settings"
+                      type="button"
+                      onClick={handleSaveSettings}
+                      className="inline-flex items-center gap-1.5 px-4 py-2 text-xs font-bold rounded-xl bg-blue-600 text-white hover:bg-blue-700 transition cursor-pointer shadow-xs"
+                    >
+                      <Check className="w-3.5 h-3.5" />
+                      <span>Save &amp; Lock</span>
+                    </button>
+                  </>
+                )}
+              </div>
+            </div>
+
             {/* Top Enable Switch */}
             <div className="flex items-center justify-between pb-4 border-b border-slate-100">
               <div>
-                <h2 className="text-sm font-bold text-slate-900 flex items-center gap-2">
-                  <Server className="w-4 h-4 text-blue-600" />
-                  <span>Company Mailbox Ingestion Gateway</span>
-                </h2>
-                <p className="text-xs text-slate-500 mt-0.5">
-                  When enabled, incoming emails sent to your company address will be converted into support tickets.
+                <h3 className="text-xs font-bold text-slate-800">Mailbox Ingestion Activation</h3>
+                <p className="text-[11px] text-slate-500">
+                  When active, the server continuously queries POP3 for incoming staff support requests.
                 </p>
               </div>
-              <label className="relative inline-flex items-center cursor-pointer">
+              <label className={`relative inline-flex items-center ${isEditing ? 'cursor-pointer' : 'cursor-not-allowed opacity-75'}`}>
                 <input
                   type="checkbox"
+                  disabled={!isEditing}
                   checked={config.enabled}
                   onChange={(e) => setConfig({ ...config, enabled: e.target.checked })}
                   className="sr-only peer"
@@ -546,6 +561,9 @@ export const EmailIntegrationPage: React.FC<EmailIntegrationPageProps> = ({
                 <div className="w-11 h-6 bg-slate-200 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-slate-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-blue-600"></div>
               </label>
             </div>
+
+            {/* Locked Fieldset Containing All Configuration Forms */}
+            <fieldset disabled={!isEditing} className="space-y-6 disabled:opacity-95">
 
             {/* Section 1: POP3 Inbound Server Settings */}
             <div>
@@ -620,7 +638,7 @@ export const EmailIntegrationPage: React.FC<EmailIntegrationPageProps> = ({
                       const val = e.target.value;
                       setConfig({ ...config, user: val, username: val, emailAddress: val });
                     }}
-                    placeholder="helpdesk@uoa.com.my"
+                    placeholder="ticket.support@uohospitality.com.my"
                     className="w-full px-3 py-2 text-xs rounded-xl border border-slate-200 bg-slate-50 focus:bg-white focus:ring-2 focus:ring-blue-500 focus:outline-none"
                   />
                   <span className="text-[10px] text-slate-400 mt-0.5 block">Mailbox account user identifier</span>
@@ -653,7 +671,7 @@ export const EmailIntegrationPage: React.FC<EmailIntegrationPageProps> = ({
                     type="email"
                     value={config.emailAddress}
                     onChange={(e) => setConfig({ ...config, emailAddress: e.target.value })}
-                    placeholder="helpdesk@uoa.com.my"
+                    placeholder="ticket.support@uohospitality.com.my"
                     className="w-full px-3 py-2 text-xs rounded-xl border border-slate-200 bg-slate-50 focus:bg-white focus:ring-2 focus:ring-blue-500 focus:outline-none"
                   />
                   <span className="text-[10px] text-slate-400 mt-0.5 block">Staff send inquiries to this company address</span>
@@ -685,7 +703,7 @@ export const EmailIntegrationPage: React.FC<EmailIntegrationPageProps> = ({
                     type="text"
                     value={config.companyDomain || ''}
                     onChange={(e) => setConfig({ ...config, companyDomain: e.target.value })}
-                    placeholder="uoa.com.my"
+                    placeholder="uohospitality.com.my"
                     className="w-full px-3 py-2 text-xs rounded-xl border border-slate-200 bg-slate-50 focus:bg-white focus:ring-2 focus:ring-blue-500 focus:outline-none"
                   />
                 </div>
@@ -733,18 +751,39 @@ export const EmailIntegrationPage: React.FC<EmailIntegrationPageProps> = ({
 
                 {testInboundResult && (
                   <div
-                    className={`text-xs px-3 py-1 rounded-lg flex items-center gap-1.5 ${
+                    className={`text-xs p-3 rounded-xl border flex flex-col gap-1.5 w-full ${
                       testInboundResult.success
-                        ? 'bg-emerald-50 text-emerald-700 border border-emerald-200'
-                        : 'bg-rose-50 text-rose-700 border border-rose-200'
+                        ? 'bg-emerald-50 text-emerald-900 border-emerald-200'
+                        : 'bg-rose-50 text-rose-900 border-rose-200'
                     }`}
                   >
-                    {testInboundResult.success ? (
-                      <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600 shrink-0" />
-                    ) : (
-                      <AlertCircle className="w-3.5 h-3.5 text-rose-600 shrink-0" />
+                    <div className="flex items-center justify-between gap-2">
+                      <div className="flex items-center gap-1.5 font-bold">
+                        {testInboundResult.success ? (
+                          <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0" />
+                        ) : (
+                          <AlertCircle className="w-4 h-4 text-rose-600 shrink-0" />
+                        )}
+                        <span>{testInboundResult.message}</span>
+                      </div>
+                      {testInboundResult.details?.pingMs !== undefined && (
+                        <span className="text-[10px] font-mono px-2 py-0.5 rounded bg-white/80 border border-slate-200 text-slate-700">
+                          ⚡ {testInboundResult.details.pingMs}ms latency
+                        </span>
+                      )}
+                    </div>
+                    {testInboundResult.details && (
+                      <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-[11px] text-slate-600 pt-1 border-t border-slate-200/60">
+                        <span>Host: <strong className="font-mono text-slate-900">{testInboundResult.details.host}:{testInboundResult.details.port}</strong></span>
+                        <span>Protocol: <strong>{testInboundResult.details.ssl ? 'SSL/TLS (Port 995)' : 'Plain/STARTTLS (Port 110)'}</strong></span>
+                        {testInboundResult.details.mailboxStatus && (
+                          <span>Mailbox: <strong className="text-emerald-700 font-semibold">{testInboundResult.details.mailboxStatus}</strong></span>
+                        )}
+                        {testInboundResult.details.pendingMessagesCount !== undefined && (
+                          <span>Pending Inbound Reports: <strong className="text-blue-700 font-bold">{testInboundResult.details.pendingMessagesCount}</strong></span>
+                        )}
+                      </div>
                     )}
-                    <span>{testInboundResult.message}</span>
                   </div>
                 )}
               </div>
@@ -777,7 +816,7 @@ export const EmailIntegrationPage: React.FC<EmailIntegrationPageProps> = ({
                     type="text"
                     value={config.smtpHost || ''}
                     onChange={(e) => setConfig({ ...config, smtpHost: e.target.value })}
-                    placeholder="smtp.uoa.com.my"
+                    placeholder="smtp.uohospitality.com.my"
                     className="w-full px-3 py-2 text-xs rounded-xl border border-slate-200 bg-slate-50 focus:bg-white focus:ring-2 focus:ring-blue-500 focus:outline-none font-mono"
                   />
                 </div>
@@ -813,19 +852,19 @@ export const EmailIntegrationPage: React.FC<EmailIntegrationPageProps> = ({
                     type="text"
                     value={config.senderDisplayName || ''}
                     onChange={(e) => setConfig({ ...config, senderDisplayName: e.target.value })}
-                    placeholder="UOA Group IT Service Desk"
+                    placeholder="UOH Hospitality Support Desk"
                     className="w-full px-3 py-2 text-xs rounded-xl border border-slate-200 bg-slate-50 focus:bg-white focus:ring-2 focus:ring-blue-500 focus:outline-none"
                   />
                 </div>
               </div>
 
               {/* SMTP Test Connection Status */}
-              <div className="mt-3 flex items-center gap-3">
+              <div className="mt-3 flex flex-col sm:flex-row sm:items-start gap-3">
                 <button
                   type="button"
                   onClick={handleTestSmtpConnection}
                   disabled={isTestingSmtp}
-                  className="px-3 py-1.5 rounded-lg text-xs font-bold bg-slate-100 hover:bg-slate-200 text-slate-800 border border-slate-300 transition flex items-center gap-1.5 cursor-pointer disabled:opacity-50"
+                  className="px-3 py-1.5 rounded-lg text-xs font-bold bg-slate-100 hover:bg-slate-200 text-slate-800 border border-slate-300 transition flex items-center gap-1.5 cursor-pointer disabled:opacity-50 shrink-0"
                 >
                   <Send className={`w-3.5 h-3.5 ${isTestingSmtp ? 'animate-spin' : ''}`} />
                   <span>{isTestingSmtp ? 'Testing SMTP...' : 'Test SMTP Relay'}</span>
@@ -833,18 +872,38 @@ export const EmailIntegrationPage: React.FC<EmailIntegrationPageProps> = ({
 
                 {testSmtpResult && (
                   <div
-                    className={`text-xs px-3 py-1 rounded-lg flex items-center gap-1.5 ${
+                    className={`text-xs p-3 rounded-xl border flex flex-col gap-1.5 w-full ${
                       testSmtpResult.success
-                        ? 'bg-emerald-50 text-emerald-700 border border-emerald-200'
-                        : 'bg-rose-50 text-rose-700 border border-rose-200'
+                        ? 'bg-emerald-50 text-emerald-900 border-emerald-200'
+                        : 'bg-rose-50 text-rose-900 border-rose-200'
                     }`}
                   >
-                    {testSmtpResult.success ? (
-                      <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600 shrink-0" />
-                    ) : (
-                      <AlertCircle className="w-3.5 h-3.5 text-rose-600 shrink-0" />
+                    <div className="flex items-center justify-between gap-2">
+                      <div className="flex items-center gap-1.5 font-bold">
+                        {testSmtpResult.success ? (
+                          <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0" />
+                        ) : (
+                          <AlertCircle className="w-4 h-4 text-rose-600 shrink-0" />
+                        )}
+                        <span>{testSmtpResult.message}</span>
+                      </div>
+                      {testSmtpResult.details?.pingMs !== undefined && (
+                        <span className="text-[10px] font-mono px-2 py-0.5 rounded bg-white/80 border border-slate-200 text-slate-700">
+                          ⚡ {testSmtpResult.details.pingMs}ms latency
+                        </span>
+                      )}
+                    </div>
+                    {testSmtpResult.details && (
+                      <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-[11px] text-slate-600 pt-1 border-t border-slate-200/60">
+                        <span>Relay: <strong className="font-mono text-slate-900">{testSmtpResult.details.host}:{testSmtpResult.details.port}</strong></span>
+                        {testSmtpResult.details.banner && (
+                          <span className="truncate max-w-xs">Server: <code className="text-[10px] bg-white px-1 py-0.5 rounded border border-slate-200">{testSmtpResult.details.banner}</code></span>
+                        )}
+                        {testSmtpResult.details.authenticated !== undefined && (
+                          <span>Auth: <strong className={testSmtpResult.details.authenticated ? 'text-emerald-700 font-semibold' : 'text-amber-700'}>{testSmtpResult.details.authenticated ? 'Verified (RFC 4954)' : 'Anonymous/Open Relay'}</strong></span>
+                        )}
+                      </div>
                     )}
-                    <span>{testSmtpResult.message}</span>
                   </div>
                 )}
               </div>
@@ -980,239 +1039,64 @@ export const EmailIntegrationPage: React.FC<EmailIntegrationPageProps> = ({
                 </div>
               </div>
             </div>
+          </fieldset>
 
-            {/* Save Button Footer */}
-            <div className="pt-4 border-t border-slate-100 flex items-center justify-end gap-3">
-              <button
-                type="button"
-                onClick={handleSaveSettings}
-                className="px-5 py-2.5 rounded-xl text-xs font-bold bg-blue-600 hover:bg-blue-700 text-white shadow-xs transition flex items-center gap-1.5 cursor-pointer"
-              >
-                <Check className="w-4 h-4" />
-                <span>Save Mailbox Configuration</span>
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* TAB 2: COMPANY MAILBOX SIMULATOR & TEST BENCH */}
-      {activeTab === 'TEST_BENCH' && (
-        <div className="space-y-6">
-          <div className="bg-white rounded-2xl border border-slate-200 p-6 shadow-xs space-y-5">
-            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-3 border-b border-slate-100">
-              <div>
-                <h2 className="text-sm font-bold text-slate-900 flex items-center gap-2">
-                  <Zap className="w-4 h-4 text-amber-500" />
-                  <span>Company Staff Inbound Email Simulator</span>
-                </h2>
-                <p className="text-xs text-slate-500 mt-0.5">
-                  Simulate an employee sending a support email to <strong>{config.emailAddress || 'helpdesk@uoa.com.my'}</strong>. 
-                  Verify ticket creation, automated staff lookup, BU routing, and auto-reply dispatch.
-                </p>
-              </div>
-            </div>
-
-            {/* Preset Company Scenarios */}
-            <div>
-              <span className="text-xs font-semibold text-slate-700 mb-2 block">
-                Quick Corporate Incident Scenarios:
-              </span>
-              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2">
-                {SAMPLE_TEST_EMAILS.map((sc) => (
-                  <button
-                    key={sc.id}
-                    type="button"
-                    onClick={() => handleApplyPresetScenario(sc)}
-                    className="text-left p-3 rounded-xl border border-slate-200 hover:border-blue-300 hover:bg-blue-50/50 bg-slate-50/50 transition cursor-pointer group"
-                  >
-                    <div className="flex items-center justify-between gap-1 mb-1">
-                      <span className="text-[11px] font-bold text-slate-800 truncate group-hover:text-blue-600">
-                        {sc.fromName}
-                      </span>
-                      <span
-                        className={`text-[9px] font-bold px-1.5 py-0.2 rounded uppercase ${
-                          sc.priority === 'URGENT'
-                            ? 'bg-rose-100 text-rose-700'
-                            : sc.priority === 'HIGH'
-                            ? 'bg-amber-100 text-amber-800'
-                            : 'bg-blue-100 text-blue-700'
-                        }`}
-                      >
-                        {sc.priority}
-                      </span>
-                    </div>
-                    <p className="text-[11px] text-slate-500 line-clamp-2 leading-tight">
-                      {sc.subject}
-                    </p>
-                    <span className="text-[10px] text-blue-600 font-medium mt-1 inline-block">
-                      Load Scenario →
-                    </span>
-                  </button>
-                ))}
-              </div>
-            </div>
-
-            {/* Email Composer Form */}
-            <div className="p-4 rounded-xl border border-slate-200 bg-slate-50/60 space-y-3">
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-                <div>
-                  <label className="block text-xs font-semibold text-slate-700 mb-1">
-                    From (Staff Email)
-                  </label>
-                  <input
-                    type="email"
-                    value={simulatorFrom}
-                    onChange={(e) => setSimulatorFrom(e.target.value)}
-                    placeholder="aaqil.mustaqim@uoa.com.my"
-                    className="w-full px-3 py-2 text-xs rounded-xl border border-slate-200 bg-white focus:ring-2 focus:ring-blue-500 focus:outline-none"
-                  />
-                </div>
-
-                <div>
-                  <label className="block text-xs font-semibold text-slate-700 mb-1">
-                    Staff Name
-                  </label>
-                  <input
-                    type="text"
-                    value={simulatorFromName}
-                    onChange={(e) => setSimulatorFromName(e.target.value)}
-                    placeholder="Aaqil Mustaqim"
-                    className="w-full px-3 py-2 text-xs rounded-xl border border-slate-200 bg-white focus:ring-2 focus:ring-blue-500 focus:outline-none"
-                  />
-                </div>
-              </div>
-
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-                <div>
-                  <label className="block text-xs font-semibold text-slate-700 mb-1">
-                    To (Helpdesk Mailbox)
-                  </label>
-                  <input
-                    type="email"
-                    value={simulatorTo}
-                    onChange={(e) => setSimulatorTo(e.target.value)}
-                    placeholder="helpdesk@uoa.com.my"
-                    className="w-full px-3 py-2 text-xs rounded-xl border border-slate-200 bg-white focus:ring-2 focus:ring-blue-500 focus:outline-none"
-                  />
-                </div>
-
-                <div>
-                  <label className="block text-xs font-semibold text-slate-700 mb-1">
-                    Subject Line
-                  </label>
-                  <input
-                    type="text"
-                    value={simulatorSubject}
-                    onChange={(e) => setSimulatorSubject(e.target.value)}
-                    placeholder="e.g. POS Terminal #2 Offline"
-                    className="w-full px-3 py-2 text-xs rounded-xl border border-slate-200 bg-white focus:ring-2 focus:ring-blue-500 focus:outline-none font-semibold text-slate-900"
-                  />
-                </div>
-              </div>
-
-              <div>
-                <label className="block text-xs font-semibold text-slate-700 mb-1">
-                  Email Body Content
-                </label>
-                <textarea
-                  rows={5}
-                  value={simulatorBody}
-                  onChange={(e) => setSimulatorBody(e.target.value)}
-                  placeholder="Describe incident in detail..."
-                  className="w-full p-3 text-xs rounded-xl border border-slate-200 bg-white focus:ring-2 focus:ring-blue-500 focus:outline-none text-slate-800"
-                />
-              </div>
-
-              <div className="flex items-center justify-between pt-2">
-                <span className="text-[11px] text-slate-500">
-                  ⚡ Simulates incoming POP3 message fetch &amp; real-time parser execution
-                </span>
-                <button
-                  type="button"
-                  onClick={handleSendTestEmail}
-                  disabled={isProcessingEmail}
-                  className="px-4 py-2 rounded-xl text-xs font-bold bg-slate-900 hover:bg-slate-800 text-white shadow-xs transition flex items-center gap-2 cursor-pointer disabled:opacity-50"
-                >
-                  <Send className={`w-3.5 h-3.5 ${isProcessingEmail ? 'animate-spin' : ''}`} />
-                  <span>{isProcessingEmail ? 'Processing Ingestion...' : 'Transmit Inbound Email →'}</span>
-                </button>
-              </div>
-            </div>
-
-            {/* Last Processed Result Card */}
-            {lastProcessedResult && (
-              <div
-                className={`p-4 rounded-xl border transition-all ${
-                  lastProcessedResult.ticket
-                    ? 'bg-emerald-50/70 border-emerald-200 text-emerald-950'
-                    : 'bg-rose-50/70 border-rose-200 text-rose-950'
-                }`}
-              >
-                <div className="flex items-start justify-between gap-3 mb-2">
-                  <div className="flex items-center gap-2">
-                    {lastProcessedResult.ticket ? (
-                      <CheckCircle2 className="w-5 h-5 text-emerald-600 shrink-0" />
-                    ) : (
-                      <AlertCircle className="w-5 h-5 text-rose-600 shrink-0" />
-                    )}
-                    <h4 className="text-xs font-bold text-slate-900">
-                      {lastProcessedResult.message}
-                    </h4>
-                  </div>
-                  {lastProcessedResult.ticket && onSelectTicket && (
-                    <button
-                      type="button"
-                      onClick={() => onSelectTicket(lastProcessedResult.ticket!)}
-                      className="px-3 py-1 text-xs font-bold rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white shadow-2xs transition flex items-center gap-1 cursor-pointer"
-                    >
-                      <span>Open Ticket #{lastProcessedResult.ticket.ticketNumber}</span>
-                      <ChevronRight className="w-3.5 h-3.5" />
-                    </button>
-                  )}
-                </div>
-
-                {lastProcessedResult.ticket && (
-                  <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 text-xs pt-2 border-t border-emerald-200/60 mt-2">
-                    <div>
-                      <span className="text-[10px] text-slate-500 uppercase block font-semibold">
-                        Ticket Number
-                      </span>
-                      <span className="font-bold text-slate-900">
-                        {lastProcessedResult.ticket.ticketNumber}
-                      </span>
-                    </div>
-                    <div>
-                      <span className="text-[10px] text-slate-500 uppercase block font-semibold">
-                        Assigned Priority
-                      </span>
-                      <span className="font-bold text-slate-900">
-                        {lastProcessedResult.ticket.priority}
-                      </span>
-                    </div>
-                    <div>
-                      <span className="text-[10px] text-slate-500 uppercase block font-semibold">
-                        Routed Business Unit
-                      </span>
-                      <span className="font-bold text-slate-900">
-                        {businessUnits.find((b) => b.id === lastProcessedResult.ticket?.businessUnitId)?.name || 'Default'}
-                      </span>
-                    </div>
-                    <div>
-                      <span className="text-[10px] text-slate-500 uppercase block font-semibold">
-                        Auto-Reply Receipt
-                      </span>
-                      <span className="font-bold text-emerald-700">Dispatched via SMTP</span>
-                    </div>
-                  </div>
+            {/* Save / Edit Control Footer */}
+            <div className="pt-4 border-t border-slate-100 flex items-center justify-between gap-3">
+              <div className="text-xs text-slate-500 flex items-center gap-1.5">
+                {isEditing ? (
+                  <span className="text-amber-700 font-medium flex items-center gap-1">
+                    <Unlock className="w-3.5 h-3.5 text-amber-600" />
+                    Unsaved changes are active. Click &quot;Save &amp; Lock&quot; to apply.
+                  </span>
+                ) : (
+                  <span className="text-slate-500 flex items-center gap-1">
+                    <Lock className="w-3.5 h-3.5 text-slate-400" />
+                    Fields are locked to protect against unintentional modification.
+                  </span>
                 )}
               </div>
-            )}
+
+              <div className="flex items-center gap-2">
+                {!isEditing ? (
+                  <button
+                    id="btn-footer-edit-email-settings"
+                    type="button"
+                    onClick={handleStartEdit}
+                    className="px-4 py-2 rounded-xl text-xs font-bold bg-blue-50 hover:bg-blue-100 text-blue-700 border border-blue-200 shadow-2xs transition flex items-center gap-1.5 cursor-pointer"
+                  >
+                    <Pencil className="w-3.5 h-3.5" />
+                    <span>Edit Configuration</span>
+                  </button>
+                ) : (
+                  <>
+                    <button
+                      id="btn-footer-cancel-email-settings"
+                      type="button"
+                      onClick={handleCancelEdit}
+                      className="px-3.5 py-2 rounded-xl text-xs font-semibold text-slate-600 hover:bg-slate-100 border border-slate-200 transition flex items-center gap-1.5 cursor-pointer"
+                    >
+                      <X className="w-3.5 h-3.5" />
+                      <span>Cancel</span>
+                    </button>
+                    <button
+                      id="btn-footer-save-email-settings"
+                      type="button"
+                      onClick={handleSaveSettings}
+                      className="px-5 py-2.5 rounded-xl text-xs font-bold bg-blue-600 hover:bg-blue-700 text-white shadow-xs transition flex items-center gap-1.5 cursor-pointer"
+                    >
+                      <Check className="w-4 h-4" />
+                      <span>Save &amp; Lock Settings</span>
+                    </button>
+                  </>
+                )}
+              </div>
+            </div>
           </div>
         </div>
       )}
 
-      {/* TAB 3: INBOUND EMAIL AUDIT LOGS */}
+      {/* TAB 2: INBOUND EMAIL AUDIT LOGS */}
       {activeTab === 'LOGS' && (
         <div className="space-y-4">
           <div className="bg-white rounded-2xl border border-slate-200 shadow-xs overflow-hidden">

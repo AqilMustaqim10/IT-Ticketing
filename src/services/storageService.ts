@@ -41,15 +41,15 @@ const STORAGE_KEYS = {
 export const DEFAULT_USER_PASSWORD = 'password123';
 
 export const DEFAULT_EMAIL_SETTINGS: EmailSettings = {
-  host: 'mail.uoa.com.my',
+  host: 'mail.uohospitality.com.my',
   port: 995,
-  user: 'helpdesk@uoa.com.my',
+  user: 'ticket.support@uohospitality.com.my',
   password: '',
   useSSL: true,
   enabled: true,
   pollIntervalMinutes: 3,
-  emailAddress: 'helpdesk@uoa.com.my',
-  companyDomain: 'uoa.com.my',
+  emailAddress: 'ticket.support@uohospitality.com.my',
+  companyDomain: 'uohospitality.com.my',
   provider: 'COMPANY_POP3',
   targetBusinessUnitId: 'bu-uoa-corp',
   autoAssignCategory: true,
