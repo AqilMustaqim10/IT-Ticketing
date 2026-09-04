@@ -36,6 +36,8 @@ import {
 import { getBUTheme } from '../utils/themeUtils';
 import { BUBadge } from './BUBadge';
 import { ConfirmModal } from './ConfirmModal';
+import { FilePreviewComponent } from './FilePreviewComponent';
+import { emailIngestionService } from '../services/emailIngestionService';
 
 interface TicketDetailModalProps {
   ticket: Ticket | null;
@@ -102,10 +104,9 @@ export const TicketDetailModal: React.FC<TicketDetailModalProps> = ({
 
   const handleProcessFiles = (files: FileList | File[]) => {
     const fileArray = Array.from(files);
-    const validImageFiles = fileArray.filter((f) => f.type.startsWith('image/'));
+    const validFiles = fileArray.filter((f) => f.size <= 10 * 1024 * 1024);
 
-    validImageFiles.forEach((file) => {
-      if (file.size > 5 * 1024 * 1024) return;
+    validFiles.forEach((file) => {
       const reader = new FileReader();
       reader.onload = (e) => {
         const result = e.target?.result as string;
@@ -115,7 +116,7 @@ export const TicketDetailModal: React.FC<TicketDetailModalProps> = ({
             name: file.name,
             url: result,
             size: file.size,
-            type: file.type,
+            type: file.type || 'application/octet-stream',
             uploadedAt: new Date().toISOString(),
             uploadedBy: currentUser.fullName,
           };
@@ -126,7 +127,7 @@ export const TicketDetailModal: React.FC<TicketDetailModalProps> = ({
     });
   };
 
-  const handleSaveChanges = () => {
+  const handleSaveChanges = async () => {
     setIsSaving(true);
     onUpdateTicket(ticket.id, {
       status: selectedStatus,
@@ -136,6 +137,22 @@ export const TicketDetailModal: React.FC<TicketDetailModalProps> = ({
       comment: newComment.trim() ? newComment.trim() : undefined,
       newAttachments: pendingAttachments.length > 0 ? pendingAttachments : undefined,
     });
+
+    if (selectedStatus !== ticket.status && creator?.email) {
+      await emailIngestionService.notifyTicketStatusChange({
+        ticketId: ticket.id,
+        ticketNumber: ticket.ticketNumber,
+        ticketTitle: ticket.title,
+        newStatus: selectedStatus,
+        oldStatus: ticket.status,
+        requesterEmail: creator.email,
+        requesterName: creator.fullName,
+        technicianName: currentUser.fullName,
+        resolutionNotes: resolutionNotes.trim() || ticket.resolutionNotes,
+        businessUnitName: bu?.name,
+      });
+    }
+
     setIsSaving(false);
     setNewComment('');
     setPendingAttachments([]);
@@ -275,49 +292,14 @@ export const TicketDetailModal: React.FC<TicketDetailModalProps> = ({
               </div>
             </div>
 
-            {/* Attached Pictures & Evidence Section */}
+            {/* File & Evidence Preview (Thumbnails, Doc Links, Lightbox, Clean Collapse) */}
             {ticket.attachments && ticket.attachments.length > 0 && (
-              <div className="space-y-2.5">
-                <div className="flex items-center justify-between">
-                  <h4 className="text-xs font-bold text-slate-800 dark:text-slate-200 uppercase tracking-wider flex items-center gap-1.5">
-                    <ImageIcon className="w-4 h-4 text-blue-600 dark:text-blue-400" />
-                    Attached Pictures &amp; Screenshot Evidence ({ticket.attachments.length})
-                  </h4>
-                  <span className="text-[11px] text-slate-400 dark:text-slate-500">Click any image for high-res preview</span>
-                </div>
-
-                <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-3">
-                  {ticket.attachments.map((att) => (
-                    <div
-                      key={att.id}
-                      onClick={() => setActiveLightboxImage(att)}
-                      className="group relative bg-slate-900 rounded-xl overflow-hidden border border-slate-200 dark:border-slate-700 shadow-xs cursor-pointer hover:shadow-md transition transform hover:-translate-y-0.5"
-                    >
-                      <img
-                        src={att.url}
-                        alt={att.name}
-                        referrerPolicy="no-referrer"
-                        className="w-full h-28 object-cover opacity-90 group-hover:opacity-100 transition"
-                      />
-                      <div className="absolute inset-0 bg-gradient-to-t from-black/80 via-transparent to-transparent flex flex-col justify-between p-2">
-                        <div className="flex justify-end opacity-0 group-hover:opacity-100 transition">
-                          <span className="p-1 bg-black/60 text-white rounded-lg backdrop-blur-xs">
-                            <Maximize2 className="w-3.5 h-3.5" />
-                          </span>
-                        </div>
-                        <div>
-                          <p className="text-[11px] font-semibold text-white truncate drop-shadow-xs">
-                            {att.name}
-                          </p>
-                          <div className="flex items-center justify-between text-[9px] text-slate-300 mt-0.5">
-                            <span>{formatFileSize(att.size)}</span>
-                            {att.uploadedBy && <span className="truncate max-w-[80px]">{att.uploadedBy}</span>}
-                          </div>
-                        </div>
-                      </div>
-                    </div>
-                  ))}
-                </div>
+              <div className="p-3.5 rounded-xl bg-slate-50/60 dark:bg-slate-800/40 border border-slate-200/80 dark:border-slate-700/80">
+                <FilePreviewComponent
+                  attachments={ticket.attachments}
+                  title="Incident & Email Attachments"
+                  maxInitialDisplay={6}
+                />
               </div>
             )}
 
@@ -460,24 +442,13 @@ export const TicketDetailModal: React.FC<TicketDetailModalProps> = ({
 
                           {/* Attachments inside activity */}
                           {act.attachments && act.attachments.length > 0 && (
-                            <div className="grid grid-cols-2 sm:grid-cols-3 gap-2 pt-1.5">
-                              {act.attachments.map((att: any) => (
-                                <div
-                                  key={att.id}
-                                  onClick={() => setActiveLightboxImage(att)}
-                                  className="group relative rounded-lg overflow-hidden border border-slate-300 dark:border-slate-600 cursor-pointer"
-                                >
-                                  <img
-                                    src={att.url}
-                                    alt={att.name}
-                                    referrerPolicy="no-referrer"
-                                    className="w-full h-16 object-cover"
-                                  />
-                                  <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 flex items-center justify-center transition">
-                                    <Maximize2 className="w-4 h-4 text-white" />
-                                  </div>
-                                </div>
-                              ))}
+                            <div className="pt-2">
+                              <FilePreviewComponent
+                                attachments={act.attachments}
+                                compact={true}
+                                maxInitialDisplay={3}
+                                title="Attached Files"
+                              />
                             </div>
                           )}
                         </div>
@@ -493,32 +464,41 @@ export const TicketDetailModal: React.FC<TicketDetailModalProps> = ({
               {pendingAttachments.length > 0 && (
                 <div className="p-2.5 bg-blue-50 dark:bg-blue-950/40 border border-blue-200 dark:border-blue-800 rounded-xl space-y-1.5">
                   <div className="text-[11px] font-bold text-blue-900 dark:text-blue-200 flex items-center gap-1">
-                    <ImageIcon className="w-3 h-3 text-blue-600 dark:text-blue-400" />
+                    <Paperclip className="w-3 h-3 text-blue-600 dark:text-blue-400" />
                     Ready to attach with next remark ({pendingAttachments.length})
                   </div>
                   <div className="flex flex-wrap gap-2">
-                    {pendingAttachments.map((att) => (
-                      <div
-                        key={att.id}
-                        className="flex items-center gap-1.5 bg-white dark:bg-slate-800 border border-blue-200 dark:border-blue-800 rounded-lg p-1 pr-2 text-[10px]"
-                      >
-                        <img
-                          src={att.url}
-                          alt={att.name}
-                          className="w-6 h-6 object-cover rounded"
-                        />
-                        <span className="max-w-[120px] truncate font-medium text-slate-700 dark:text-slate-200">
-                          {att.name}
-                        </span>
-                        <button
-                          type="button"
-                          onClick={() => setPendingAttachments((prev) => prev.filter((p) => p.id !== att.id))}
-                          className="text-rose-500 hover:text-rose-700 ml-1 cursor-pointer"
+                    {pendingAttachments.map((att) => {
+                      const isImg = att.type?.startsWith('image/') || /\.(png|jpe?g|gif|webp|svg)$/i.test(att.name);
+                      return (
+                        <div
+                          key={att.id}
+                          className="flex items-center gap-1.5 bg-white dark:bg-slate-800 border border-blue-200 dark:border-blue-800 rounded-lg p-1 pr-2 text-[10px]"
                         >
-                          <Trash2 className="w-3 h-3" />
-                        </button>
-                      </div>
-                    ))}
+                          {isImg ? (
+                            <img
+                              src={att.url}
+                              alt={att.name}
+                              className="w-6 h-6 object-cover rounded"
+                            />
+                          ) : (
+                            <div className="w-6 h-6 rounded bg-slate-100 dark:bg-slate-700 flex items-center justify-center text-slate-600 dark:text-slate-300">
+                              <FileText className="w-3.5 h-3.5" />
+                            </div>
+                          )}
+                          <span className="max-w-[120px] truncate font-medium text-slate-700 dark:text-slate-200">
+                            {att.name}
+                          </span>
+                          <button
+                            type="button"
+                            onClick={() => setPendingAttachments((prev) => prev.filter((p) => p.id !== att.id))}
+                            className="text-rose-500 hover:text-rose-700 ml-1 cursor-pointer"
+                          >
+                            <Trash2 className="w-3 h-3" />
+                          </button>
+                        </div>
+                      );
+                    })}
                   </div>
                 </div>
               )}
@@ -539,7 +519,7 @@ export const TicketDetailModal: React.FC<TicketDetailModalProps> = ({
                   ref={fileInputRef}
                   type="file"
                   multiple
-                  accept="image/*"
+                  accept="image/*,.pdf,.doc,.docx,.xls,.xlsx,.csv,.txt,.log,.zip"
                   onChange={(e) => e.target.files && handleProcessFiles(e.target.files)}
                   className="hidden"
                 />
@@ -549,10 +529,10 @@ export const TicketDetailModal: React.FC<TicketDetailModalProps> = ({
                     type="button"
                     onClick={() => fileInputRef.current?.click()}
                     className="inline-flex items-center gap-1 px-3 py-2 rounded-lg bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-200 text-xs font-semibold border border-slate-300 dark:border-slate-700 transition cursor-pointer"
-                    title="Attach Picture"
+                    title="Attach File or Screenshot"
                   >
                     <Paperclip className="w-3.5 h-3.5 text-slate-500 dark:text-slate-400" />
-                    <span>Attach Photo</span>
+                    <span>Attach File</span>
                   </button>
 
                   <button

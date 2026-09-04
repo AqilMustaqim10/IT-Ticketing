@@ -294,9 +294,18 @@ export async function testPop3Mailbox(config: Pop3Options): Promise<{
     };
   } catch (err: any) {
     session.close();
+    let diagnosticHint = '';
+    const errMsg = err.message || '';
+    if (errMsg.includes('[AUTH]') || errMsg.toLowerCase().includes('authentication failed')) {
+      if (config.port === 110 || !config.useSsl) {
+        diagnosticHint = ' • Hint: Port 110 does not use SSL. Most mail servers (cPanel, Dovecot, Postfix) reject plain authentication over port 110. Change port to 995 and check "useSSL", and ensure username is your FULL email address.';
+      } else {
+        diagnosticHint = ' • Hint: Ensure the username is your FULL email address (e.g. user@uoahospitality.com.my) and verify your password or app password. Check if POP3 is enabled in your mailbox webmail/cPanel settings.';
+      }
+    }
     return {
       success: false,
-      message: `Failed to connect to POP3 Mailbox (${config.host}:${config.port}): ${err.message}`,
+      message: `Failed to connect to POP3 Mailbox (${config.host}:${config.port}): ${err.message}${diagnosticHint}`,
     };
   }
 }

@@ -19,6 +19,7 @@ import {
   Upload,
   Trash2,
   Sparkles,
+  FileText,
 } from 'lucide-react';
 import { User, BusinessUnit, Department, TicketPriority, TicketAttachment } from '../types';
 import { getBUTheme } from '../utils/themeUtils';
@@ -62,20 +63,14 @@ export const CreateTicketModal: React.FC<CreateTicketModalProps> = ({
   );
   const theme = getBUTheme(activeBU, businessUnits);
 
-  // Handle file uploads (converts images to base64 Data URLs)
+  // Handle file uploads (supports screenshots, error photos, and documents up to 10MB)
   const processFiles = (files: FileList | File[]) => {
     const fileArray = Array.from(files);
-    const validImageFiles = fileArray.filter((f) => f.type.startsWith('image/'));
 
-    if (validImageFiles.length === 0 && fileArray.length > 0) {
-      setError('Please upload image files only (PNG, JPG, JPEG, WEBP, GIF).');
-      return;
-    }
-
-    validImageFiles.forEach((file) => {
-      // 5MB limit check per file
-      if (file.size > 5 * 1024 * 1024) {
-        setError(`File "${file.name}" exceeds 5MB size limit.`);
+    fileArray.forEach((file) => {
+      // 10MB limit check per file
+      if (file.size > 10 * 1024 * 1024) {
+        setError(`File "${file.name}" exceeds 10MB size limit.`);
         return;
       }
 
@@ -88,7 +83,7 @@ export const CreateTicketModal: React.FC<CreateTicketModalProps> = ({
             name: file.name,
             url: result,
             size: file.size,
-            type: file.type,
+            type: file.type || 'application/octet-stream',
             uploadedAt: new Date().toISOString(),
             uploadedBy: currentUser.fullName,
           };
@@ -416,7 +411,7 @@ export const CreateTicketModal: React.FC<CreateTicketModalProps> = ({
                 ref={fileInputRef}
                 type="file"
                 multiple
-                accept="image/*"
+                accept="image/*,.pdf,.doc,.docx,.xls,.xlsx,.csv,.txt,.log,.zip"
                 onChange={handleFileInputChange}
                 className="hidden"
                 id="file-upload-input"
@@ -426,10 +421,10 @@ export const CreateTicketModal: React.FC<CreateTicketModalProps> = ({
                   <Upload className="w-5 h-5" />
                 </div>
                 <div className="text-xs font-semibold text-slate-700 dark:text-slate-300">
-                  <span className="text-blue-600 dark:text-blue-400 font-bold hover:underline">Click to browse</span> or drag and drop pictures here
+                  <span className="text-blue-600 dark:text-blue-400 font-bold hover:underline">Click to browse</span> or drag and drop files here
                 </div>
                 <div className="text-[10px] text-slate-400 dark:text-slate-500">
-                  Supports PNG, JPG, JPEG, WEBP, GIF, SVG screenshots and error photos
+                  Supports screenshots (PNG, JPG, WEBP), diagnostic logs (.txt, .log), and documents (.pdf, .docx) up to 10MB
                 </div>
               </div>
             </div>
@@ -437,44 +432,58 @@ export const CreateTicketModal: React.FC<CreateTicketModalProps> = ({
             {/* Attachment Preview Gallery */}
             {attachments.length > 0 && (
               <div className="grid grid-cols-2 sm:grid-cols-3 gap-2.5 pt-1">
-                {attachments.map((att) => (
-                  <div
-                    key={att.id}
-                    className="relative group bg-slate-900 rounded-xl overflow-hidden border border-slate-200 dark:border-slate-700 shadow-xs"
-                  >
-                    <img
-                      src={att.url}
-                      alt={att.name}
-                      referrerPolicy="no-referrer"
-                      className="w-full h-24 object-cover opacity-90 group-hover:opacity-100 transition"
-                    />
-                    <div className="absolute inset-0 bg-gradient-to-t from-black/80 via-transparent to-transparent flex flex-col justify-between p-2 pointer-events-none">
-                      <div className="flex justify-end pointer-events-auto">
-                        <button
-                          type="button"
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            removeAttachment(att.id);
-                          }}
-                          className="p-1 bg-rose-600 hover:bg-rose-700 text-white rounded-lg shadow-sm transition cursor-pointer"
-                          title="Remove picture"
-                        >
-                          <Trash2 className="w-3.5 h-3.5" />
-                        </button>
-                      </div>
-                      <div>
-                        <p className="text-[10px] font-medium text-white truncate drop-shadow-xs">
-                          {att.name}
-                        </p>
-                        {att.size && (
-                          <p className="text-[9px] text-slate-300">
-                            {formatFileSize(att.size)}
+                {attachments.map((att) => {
+                  const isImg = att.type?.startsWith('image/') || /\.(png|jpe?g|gif|webp|svg)$/i.test(att.name);
+
+                  return (
+                    <div
+                      key={att.id}
+                      className="relative group bg-slate-900 rounded-xl overflow-hidden border border-slate-200 dark:border-slate-700 shadow-xs"
+                    >
+                      {isImg ? (
+                        <img
+                          src={att.url}
+                          alt={att.name}
+                          referrerPolicy="no-referrer"
+                          className="w-full h-24 object-cover opacity-90 group-hover:opacity-100 transition"
+                        />
+                      ) : (
+                        <div className="w-full h-24 bg-slate-800 flex flex-col items-center justify-center p-3 text-slate-300">
+                          <FileText className="w-8 h-8 text-blue-400 mb-1" />
+                          <span className="text-[9px] uppercase font-bold text-slate-400 tracking-wider">
+                            {att.name.split('.').pop() || 'FILE'}
+                          </span>
+                        </div>
+                      )}
+
+                      <div className="absolute inset-0 bg-gradient-to-t from-black/85 via-black/20 to-transparent flex flex-col justify-between p-2 pointer-events-none">
+                        <div className="flex justify-end pointer-events-auto">
+                          <button
+                            type="button"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              removeAttachment(att.id);
+                            }}
+                            className="p-1 bg-rose-600 hover:bg-rose-700 text-white rounded-lg shadow-sm transition cursor-pointer"
+                            title="Remove attachment"
+                          >
+                            <Trash2 className="w-3.5 h-3.5" />
+                          </button>
+                        </div>
+                        <div>
+                          <p className="text-[10px] font-medium text-white truncate drop-shadow-xs">
+                            {att.name}
                           </p>
-                        )}
+                          {att.size && (
+                            <p className="text-[9px] text-slate-300">
+                              {formatFileSize(att.size)}
+                            </p>
+                          )}
+                        </div>
                       </div>
                     </div>
-                  </div>
-                ))}
+                  );
+                })}
               </div>
             )}
           </div>

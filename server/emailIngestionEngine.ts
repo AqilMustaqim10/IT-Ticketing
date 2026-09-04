@@ -7,7 +7,7 @@
  */
 
 import pg from 'pg';
-import { ParsedEmail, ParsedEmailAttachment } from './emailParser';
+import { ParsedEmail, ParsedEmailAttachment, extractProblemContent } from './emailParser';
 import { fetchPop3Emails, testPop3Mailbox, Pop3Options } from './pop3Client';
 import { sendSmtpEmail } from './smtpClient';
 
@@ -129,6 +129,41 @@ export async function initEmailTables(pool: pg.Pool) {
         memoryProcessedMessageIds.add(row.message_id);
       }
 
+      // One-time cleanup for any previously ingested tickets with raw footers or false URGENT priorities
+      try {
+        await client.query(`
+          UPDATE tickets
+          SET description = REGEXP_REPLACE(description, E'\\n*---\\n*📨 \\[Auto-ingested via Corporate POP3 Mailbox[^\\]]*\\]', '', 'g')
+          WHERE description LIKE '%[Auto-ingested via Corporate POP3 Mailbox%';
+        `);
+
+        // Re-evaluate tickets previously set to URGENT if their title/description are routine requests (e.g. printer, toner, slow, mouse, wifi)
+        await client.query(`
+          UPDATE tickets
+          SET priority = 'MEDIUM'
+          WHERE priority = 'URGENT'
+            AND LOWER(title) NOT LIKE '%urgent%'
+            AND LOWER(title) NOT LIKE '%emergency%'
+            AND LOWER(title) NOT LIKE '%down%'
+            AND LOWER(title) NOT LIKE '%outage%'
+            AND LOWER(title) NOT LIKE '%blackout%'
+            AND (
+              LOWER(title) LIKE '%printer%' OR
+              LOWER(title) LIKE '%toner%' OR
+              LOWER(title) LIKE '%mouse%' OR
+              LOWER(title) LIKE '%keyboard%' OR
+              LOWER(title) LIKE '%monitor%' OR
+              LOWER(title) LIKE '%slow%' OR
+              LOWER(title) LIKE '%test%' OR
+              LOWER(title) LIKE '%wifi%' OR
+              LOWER(title) LIKE '%email%' OR
+              LOWER(title) LIKE '%password%'
+            );
+        `);
+      } catch (cleanErr: any) {
+        // Safe ignore
+      }
+
       console.log('Email Ingestion PostgreSQL tables verified and synced.');
     } finally {
       client.release();
@@ -171,47 +206,66 @@ export async function saveEmailConfig(pool: pg.Pool | null, newConfig: Partial<S
 }
 
 /**
- * Detects Priority from text content
+ * Accurately classifies ticket priority based on subject and problem content.
+ * Prevents false URGENT flags caused by corporate disclaimers or footer phrases (e.g. "immediately").
+ * Routine IT issues (printer, jam, toner, mouse, keyboard, monitor, display, wifi, password, email) default to MEDIUM.
  */
 export function detectPriority(subject: string, body: string): 'LOW' | 'MEDIUM' | 'HIGH' | 'URGENT' {
-  const text = `${subject} ${body}`.toLowerCase();
+  const cleanSub = subject.toLowerCase().trim();
+  const cleanBody = body.toLowerCase().trim();
+  const combined = `${cleanSub} \n ${cleanBody}`;
+
+  // 1. Explicit priority tag in subject brackets or form prefix
   if (
-    text.includes('urgent') ||
-    text.includes('emergency') ||
-    text.includes('critical') ||
-    text.includes('immediate') ||
-    text.includes('pos terminal down') ||
-    text.includes('system down') ||
-    text.includes('cannot check in') ||
-    text.includes('fire') ||
-    text.includes('outage')
+    /\[\s*(?:urgent|kecemasan)\s*\]/i.test(cleanSub) ||
+    /^(?:urgency|priority)\s*:\s*(?:urgent|kecemasan)\b/im.test(cleanBody)
   ) {
     return 'URGENT';
   }
   if (
-    text.includes('kds') ||
-    text.includes('kitchen') ||
-    text.includes('delay') ||
-    text.includes('flickering') ||
-    text.includes('p1') ||
-    text.includes('high priority') ||
-    text.includes('turnstile') ||
-    text.includes('door lock')
+    /\[\s*(?:high(?:\s+priority)?|p1|tinggi)\s*\]/i.test(cleanSub) ||
+    /^(?:urgency|priority)\s*:\s*(?:high|p1|tinggi)\b/im.test(cleanBody)
   ) {
     return 'HIGH';
   }
   if (
-    text.includes('printer') ||
-    text.includes('mouse') ||
-    text.includes('keyboard') ||
-    text.includes('monitor') ||
-    text.includes('slow') ||
-    text.includes('wifi') ||
-    text.includes('login')
+    /\[\s*(?:low(?:\s+priority)?|p3|rendah)\s*\]/i.test(cleanSub) ||
+    /^(?:urgency|priority)\s*:\s*(?:low|p3|rendah)\b/im.test(cleanBody)
+  ) {
+    return 'LOW';
+  }
+  if (
+    /\[\s*(?:medium(?:\s+priority)?|p2|sederhana)\s*\]/i.test(cleanSub) ||
+    /^(?:urgency|priority)\s*:\s*(?:medium|p2|sederhana)\b/im.test(cleanBody)
   ) {
     return 'MEDIUM';
   }
-  return 'LOW';
+
+  // 2. Critical Emergencies / Outages (URGENT)
+  // Must be word-bounded and not trigger on words like "immediately" in disclaimers
+  const urgentRegex = /\b(?:urgent|urgently|emergency|kecemasan|critical\s+outage|system\s+down|systems\s+down|hotel\s+down|opera\s+down|pms\s+down|cannot\s+check\s*in|total\s+outage|total\s+failure|blackout|power\s+outage|p0|sev-?1|severity\s*1)\b/i;
+
+  if (urgentRegex.test(combined)) {
+    return 'URGENT';
+  }
+
+  // 3. High Impact / Production Blockers (HIGH)
+  const highRegex = /\b(?:high\s+priority|p1|sev-?2|severity\s*2|pos(?:\s+terminal)?\s+down|pos\s+offline|pos\s+broken|kds\s+down|kitchen\s+display\s+down|turnstile\s+down|door\s+lock\s+failure|keycard\s+(?:encoder\s+)?(?:down|failure|offline)|guests?\s+waiting|queue\s+building|operations?\s+halted|halted|production\s+down)\b/i;
+
+  if (highRegex.test(combined)) {
+    return 'HIGH';
+  }
+
+  // 4. Low Priority (LOW)
+  const lowRegex = /\b(?:low\s+priority|p3|sev-?4|cosmetic|minor|enhancement|suggestion|when\s+free|no\s+rush|whenever\s+possible|fyi|general\s+inquiry|question)\b/i;
+
+  if (lowRegex.test(combined)) {
+    return 'LOW';
+  }
+
+  // 5. Default IT Support Priority: MEDIUM
+  // All routine operational tasks (printers, paper jams, toner, mouse, keyboard, monitor, wifi, password, email, etc.)
+  return 'MEDIUM';
 }
 
 /**
@@ -299,7 +353,8 @@ export async function ingestEmailReport(
 }> {
   const cleanFrom = email.from.toLowerCase().trim();
   const cleanSubject = email.subject.trim();
-  const cleanBody = email.textBody.trim() || email.htmlBody.trim() || '(No message body provided)';
+  // Extract strictly the problem description, stripping signatures, greetings, mobile tags, and corporate disclaimers
+  const cleanBody = (email.problemContent || extractProblemContent(email.textBody || email.htmlBody || '')).trim() || '(No problem description provided)';
 
   // Avoid duplicate ingestion
   if (email.messageId && memoryProcessedMessageIds.has(email.messageId)) {
@@ -363,12 +418,22 @@ export async function ingestEmailReport(
         matchedUserId = newUserId;
       }
 
+      // Map any email attachments
+      const mappedAttachments = email.attachments.map((att, idx) => ({
+        id: `att-email-${Date.now()}-${idx}`,
+        name: att.name,
+        size: att.size,
+        type: att.type,
+        url: att.dataUrl,
+        uploadedAt: new Date().toISOString(),
+      }));
+
       // 2. Check if Subject indicates a Reply to an existing Ticket (e.g. "[TCK-1002]")
       const ticketMatch = cleanSubject.match(/\[(TCK-\d+)\]/i);
       if (ticketMatch && ticketMatch[1]) {
         const tckNum = ticketMatch[1].toUpperCase();
         const existingTckRes = await client.query(
-          'SELECT id, ticket_number, title, business_unit_id, department_id, activities FROM tickets WHERE UPPER(ticket_number) = $1 LIMIT 1',
+          'SELECT id, ticket_number, title, business_unit_id, department_id, activities, attachments FROM tickets WHERE UPPER(ticket_number) = $1 LIMIT 1',
           [tckNum]
         );
 
@@ -378,21 +443,32 @@ export async function ingestEmailReport(
           createdTicketId = tck.id;
           createdTicketNumber = tck.ticket_number;
 
+          let currentAttachments: any[] = [];
+          if (tck.attachments) {
+            try {
+              currentAttachments = typeof tck.attachments === 'string' ? JSON.parse(tck.attachments) : tck.attachments;
+            } catch {
+              currentAttachments = [];
+            }
+          }
+          const updatedAttachments = mappedAttachments.length > 0 ? [...currentAttachments, ...mappedAttachments] : currentAttachments;
+
           const currentActivities = Array.isArray(tck.activities) ? tck.activities : [];
           const newActivity = {
             id: `act-${Date.now()}-${Math.random().toString(36).substr(2, 4)}`,
             type: 'COMMENT',
             actorName: email.fromName || cleanFrom,
             actorRole: 'USER',
-            details: `[Inbound Email Update from ${cleanFrom}]:\n\n${cleanBody}`,
+            details: cleanBody,
             timestamp: new Date().toISOString(),
+            attachments: mappedAttachments,
           };
 
           currentActivities.push(newActivity);
 
           await client.query(
-            'UPDATE tickets SET activities = $1, updated_at = CURRENT_TIMESTAMP WHERE id = $2',
-            [JSON.stringify(currentActivities), tck.id]
+            'UPDATE tickets SET activities = $1, attachments = $2, updated_at = CURRENT_TIMESTAMP WHERE id = $3',
+            [JSON.stringify(currentActivities), JSON.stringify(updatedAttachments), tck.id]
           );
 
           // Add audit log
@@ -424,16 +500,8 @@ export async function ingestEmailReport(
         const category = config.autoAssignCategory ? detectCategory(cleanSubject, cleanBody) : 'Email Inbound Report';
         const sanitizedTitle = cleanSubject.replace(/^(fwd|fw|re):\s*/i, '').trim() || 'Inbound Email Support Request';
 
-        const descriptionWithFooter = `${cleanBody}\n\n---\n📨 [Auto-ingested via Corporate POP3 Mailbox from ${cleanFrom}]`;
-
-        const mappedAttachments = email.attachments.map((att, idx) => ({
-          id: `att-email-${Date.now()}-${idx}`,
-          name: att.name,
-          size: att.size,
-          type: att.type,
-          url: att.dataUrl,
-          uploadedAt: new Date().toISOString(),
-        }));
+        // Pure problem statement as ticket description (no email signatures, no footers)
+        const ticketDescription = cleanBody;
 
         const initialActivities = [
           {
@@ -443,9 +511,10 @@ export async function ingestEmailReport(
             actorRole: 'SYSTEM',
             userName: 'POP3 Inbound Ingestion Service',
             userRole: 'SYSTEM',
-            details: `Ticket automatically generated from inbound email sent by ${cleanFrom} (${email.fromName || 'Staff'})`,
-            message: `Ticket automatically generated from inbound email sent by ${cleanFrom} (${email.fromName || 'Staff'})`,
+            details: `Ticket automatically created from inbound email by ${cleanFrom} (${email.fromName || 'Staff'})${mappedAttachments.length > 0 ? ` [${mappedAttachments.length} attachment(s) included]` : ''}`,
+            message: `Ticket automatically created from inbound email by ${cleanFrom} (${email.fromName || 'Staff'})`,
             timestamp: new Date().toISOString(),
+            attachments: mappedAttachments,
           },
         ];
 
@@ -456,7 +525,7 @@ export async function ingestEmailReport(
             createdTicketId,
             createdTicketNumber,
             sanitizedTitle,
-            descriptionWithFooter,
+            ticketDescription,
             category,
             priority,
             'OPEN',

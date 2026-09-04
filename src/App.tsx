@@ -9,7 +9,7 @@ import React, { useState, useEffect, useCallback } from 'react';
 import {
   storageService,
 } from './services/storageService';
-import { User, Ticket, BusinessUnit, Department, DashboardFilterState, MetricSummary, TicketStatus, TicketPriority, UserRole, AppView } from './types';
+import { User, Ticket, BusinessUnit, Department, DashboardFilterState, MetricSummary, TicketStatus, TicketPriority, UserRole, AppView, AppEnvironment } from './types';
 import { Sidebar } from './components/Sidebar';
 import { TopBar } from './components/TopBar';
 import { StatCards } from './components/StatCards';
@@ -20,12 +20,15 @@ import { CreateTicketModal } from './components/CreateTicketModal';
 import { ChangePasswordModal } from './components/ChangePasswordModal';
 import { UserManagementModal } from './components/UserManagementModal';
 import { AdminToolsModal } from './components/AdminToolsModal';
+import { EnvironmentModal } from './components/EnvironmentModal';
+import { ShareModal } from './components/ShareModal';
 import { LoginScreen } from './components/LoginScreen';
 import { UserDirectoryPage } from './components/pages/UserDirectoryPage';
 import { PortalBrandingPage } from './components/pages/PortalBrandingPage';
 import { ExportReportsPage } from './components/pages/ExportReportsPage';
 import { GitGuidePage } from './components/pages/GitGuidePage';
 import { EmailIntegrationPage } from './components/pages/EmailIntegrationPage';
+import { AdminAnalyticsCharts } from './components/AdminAnalyticsCharts';
 import { generateSupportReportPDF } from './utils/pdfExport';
 import {
   ShieldAlert,
@@ -40,6 +43,7 @@ import {
   Plus,
   Search,
   RefreshCw,
+  BarChart3,
 } from 'lucide-react';
 import { TicketAttachment, BusinessUnitBranding } from './types';
 
@@ -53,6 +57,7 @@ export default function App() {
   });
 
   const [currentView, setCurrentView] = useState<AppView>('DASHBOARD');
+  const [showAdminCharts, setShowAdminCharts] = useState(true);
   const [businessUnits, setBusinessUnits] = useState<BusinessUnit[]>([]);
   const [departments, setDepartments] = useState<Department[]>([]);
   const [allUsers, setAllUsers] = useState<User[]>([]);
@@ -94,6 +99,11 @@ export default function App() {
   const [isExportingPDF, setIsExportingPDF] = useState(false);
   const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(false);
   const [isMobileSidebarOpen, setIsMobileSidebarOpen] = useState(false);
+  const [currentEnvironment, setCurrentEnvironment] = useState<AppEnvironment>(() => {
+    return storageService.getActiveEnvironment();
+  });
+  const [isEnvironmentModalOpen, setIsEnvironmentModalOpen] = useState(false);
+  const [isShareModalOpen, setIsShareModalOpen] = useState(false);
   const [toastMessage, setToastMessage] = useState<{
     type: 'success' | 'info' | 'error';
     text: string;
@@ -153,6 +163,30 @@ export default function App() {
 
     return () => clearInterval(interval);
   }, [refreshData]);
+
+  // Listen for environment switch events across the application
+  useEffect(() => {
+    const handleEnvChanged = (e: Event) => {
+      const customEvent = e as CustomEvent<{ env: AppEnvironment }>;
+      if (customEvent.detail?.env) {
+        setCurrentEnvironment(customEvent.detail.env);
+        storageService.initialize();
+        setCurrentUser(storageService.getCurrentUser());
+        refreshData();
+      }
+    };
+    window.addEventListener('it_ticketing_environment_changed', handleEnvChanged);
+    return () => {
+      window.removeEventListener('it_ticketing_environment_changed', handleEnvChanged);
+    };
+  }, [refreshData]);
+
+  const handleEnvironmentChange = (newEnv: AppEnvironment) => {
+    storageService.setActiveEnvironment(newEnv);
+    setCurrentEnvironment(newEnv);
+    setCurrentUser(storageService.getCurrentUser());
+    refreshData();
+  };
 
   // Manual ticket list refresh from database
   const handleManualRefresh = async () => {
@@ -545,6 +579,7 @@ export default function App() {
         currentUser={currentUser}
         businessUnits={businessUnits}
         currentView={currentView}
+        currentEnvironment={currentEnvironment}
         isCollapsed={isSidebarCollapsed}
         onToggleCollapse={() => setIsSidebarCollapsed((prev) => !prev)}
         isMobileOpen={isMobileSidebarOpen}
@@ -552,6 +587,8 @@ export default function App() {
         onOpenCreateTicket={() => setIsCreateTicketOpen(true)}
         onNavigate={(view) => setCurrentView(view)}
         onOpenAdminTools={() => setIsAdminToolsOpen(true)}
+        onOpenEnvironmentModal={() => setIsEnvironmentModalOpen(true)}
+        onOpenShareModal={() => setIsShareModalOpen(true)}
         onLogout={handleLogout}
       />
 
@@ -566,10 +603,13 @@ export default function App() {
           currentUser={currentUser}
           businessUnits={businessUnits}
           filters={filters}
+          currentEnvironment={currentEnvironment}
           onFilterChange={setFilters}
           onOpenMobileSidebar={() => setIsMobileSidebarOpen(true)}
           onOpenCreateTicket={() => setIsCreateTicketOpen(true)}
           onExportPDF={() => setCurrentView('REPORTS')}
+          onOpenEnvironmentModal={() => setIsEnvironmentModalOpen(true)}
+          onOpenShareModal={() => setIsShareModalOpen(true)}
           onLogout={handleLogout}
         />
 
@@ -638,6 +678,39 @@ export default function App() {
           {/* PAGE 0 (DEFAULT): SERVICE DESK DASHBOARD */}
           {currentView === 'DASHBOARD' && (
             <>
+              {/* UAT Sandbox Notification Banner */}
+              {currentEnvironment === 'UAT' && (
+                <div
+                  id="banner-uat-mode"
+                  className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-2.5 p-3 rounded-xl bg-amber-50/90 dark:bg-amber-950/40 border border-amber-300/80 dark:border-amber-800 text-amber-900 dark:text-amber-200 text-xs shadow-2xs"
+                >
+                  <div className="flex items-center gap-2">
+                    <span className="px-2 py-0.5 rounded-md bg-amber-200/80 dark:bg-amber-900/60 font-bold text-[10px] tracking-wider uppercase">
+                      🧪 UAT Sandbox Active
+                    </span>
+                    <span className="font-medium text-amber-800 dark:text-amber-300">
+                      You are in isolated testing mode. Ticket creation, edits, and trial workflows will not affect production records.
+                    </span>
+                  </div>
+                  <div className="flex items-center gap-2 self-end sm:self-auto shrink-0">
+                    <button
+                      type="button"
+                      onClick={() => handleEnvironmentChange('PRODUCTION')}
+                      className="px-2.5 py-1 rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-[11px] transition shadow-2xs cursor-pointer"
+                    >
+                      Switch to Production
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setIsEnvironmentModalOpen(true)}
+                      className="px-2.5 py-1 rounded-lg bg-amber-200/70 dark:bg-amber-900/70 hover:bg-amber-300/70 text-amber-900 dark:text-amber-100 font-semibold text-[11px] transition cursor-pointer"
+                    >
+                      Manage
+                    </button>
+                  </div>
+                </div>
+              )}
+
               {/* Clean Header with Unit Logo */}
               <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-3 border-b border-slate-200/60">
                 <div className="flex items-center space-x-3.5">
@@ -701,15 +774,31 @@ export default function App() {
                         </div>
                       )}
                       {currentUser.role === 'ADMIN' && (
-                        <button
-                          id="btn-edit-portal-branding-quick"
-                          onClick={() => setCurrentView('BRANDING')}
-                          className="inline-flex items-center gap-1.5 px-2.5 py-1.5 text-xs font-medium text-slate-600 hover:text-slate-900 bg-white hover:bg-slate-50 border border-slate-200 rounded-lg transition shadow-2xs cursor-pointer shrink-0"
-                          title="Edit Portal Branding"
-                        >
-                          <Palette className="w-3.5 h-3.5 text-blue-600" />
-                          <span>Branding</span>
-                        </button>
+                        <>
+                          <button
+                            id="btn-admin-toggle-charts"
+                            type="button"
+                            onClick={() => setShowAdminCharts((prev) => !prev)}
+                            className={`inline-flex items-center gap-1.5 px-2.5 py-1.5 text-xs font-semibold rounded-lg border transition shadow-2xs cursor-pointer shrink-0 ${
+                              showAdminCharts
+                                ? 'bg-blue-50 dark:bg-blue-950/60 text-blue-700 dark:text-blue-300 border-blue-200 dark:border-blue-800'
+                                : 'bg-white hover:bg-slate-50 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-600 hover:text-slate-900 dark:text-slate-300 border-slate-200 dark:border-slate-700'
+                            }`}
+                            title="Toggle Visualization Charts on Dashboard"
+                          >
+                            <BarChart3 className="w-3.5 h-3.5 text-blue-600 dark:text-blue-400" />
+                            <span>{showAdminCharts ? 'Hide Charts' : 'Show Charts'}</span>
+                          </button>
+                          <button
+                            id="btn-edit-portal-branding-quick"
+                            onClick={() => setCurrentView('BRANDING')}
+                            className="inline-flex items-center gap-1.5 px-2.5 py-1.5 text-xs font-medium text-slate-600 hover:text-slate-900 bg-white hover:bg-slate-50 border border-slate-200 rounded-lg transition shadow-2xs cursor-pointer shrink-0"
+                            title="Edit Portal Branding"
+                          >
+                            <Palette className="w-3.5 h-3.5 text-blue-600" />
+                            <span>Branding</span>
+                          </button>
+                        </>
                       )}
                     </>
                   )}
@@ -814,6 +903,20 @@ export default function App() {
                       onFilterPriority={(pri) => setFilters((prev) => ({ ...prev, priority: pri }))}
                     />
                   </section>
+
+                  {/* 1.5 Visual Analytics (2 Charts with Filter for Admin) */}
+                  {currentUser.role === 'ADMIN' && showAdminCharts && (
+                    <section aria-label="Admin Visualization Charts">
+                      <AdminAnalyticsCharts
+                        tickets={storageService.getAllTickets()}
+                        businessUnits={businessUnits}
+                        departments={departments}
+                        currentUser={currentUser}
+                        onFilterStatus={(st) => setFilters((prev) => ({ ...prev, status: st }))}
+                        onFilterBU={(buId) => setFilters((prev) => ({ ...prev, businessUnitId: buId, departmentId: 'ALL' }))}
+                      />
+                    </section>
+                  )}
 
                   {/* 2. Minimal Filter Control Bar for Admin / IT */}
                   <section aria-label="Filters and Search">
@@ -937,6 +1040,23 @@ export default function App() {
           onShowToast={showToast}
         />
       )}
+
+      {/* Environment Switcher & Isolation Management Modal */}
+      <EnvironmentModal
+        isOpen={isEnvironmentModalOpen}
+        onClose={() => setIsEnvironmentModalOpen(false)}
+        currentEnvironment={currentEnvironment}
+        onEnvironmentChange={handleEnvironmentChange}
+        onShowToast={showToast}
+      />
+
+      {/* Share Desk with Friends & Colleagues Modal */}
+      <ShareModal
+        isOpen={isShareModalOpen}
+        onClose={() => setIsShareModalOpen(false)}
+        currentEnvironment={currentEnvironment}
+        onShowToast={showToast}
+      />
     </div>
   );
 }

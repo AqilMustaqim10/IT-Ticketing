@@ -25,14 +25,19 @@ import {
   Wrench,
   Moon,
   Sun,
+  Share2,
+  FlaskConical,
+  ShieldCheck,
+  BarChart3,
 } from 'lucide-react';
-import { User, BusinessUnit, AppView } from '../types';
+import { User, BusinessUnit, AppView, AppEnvironment } from '../types';
 import { getBUTheme } from '../utils/themeUtils';
 
 interface SidebarProps {
   currentUser: User;
   businessUnits: BusinessUnit[];
   currentView: AppView;
+  currentEnvironment: AppEnvironment;
   isCollapsed: boolean;
   onToggleCollapse: () => void;
   isMobileOpen: boolean;
@@ -40,6 +45,8 @@ interface SidebarProps {
   onOpenCreateTicket: () => void;
   onNavigate: (view: AppView) => void;
   onOpenAdminTools?: () => void;
+  onOpenEnvironmentModal: () => void;
+  onOpenShareModal: () => void;
   onLogout: () => void;
   isDarkMode?: boolean;
   onToggleDarkMode?: () => void;
@@ -49,6 +56,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
   currentUser,
   businessUnits,
   currentView,
+  currentEnvironment,
   isCollapsed,
   onToggleCollapse,
   isMobileOpen,
@@ -56,6 +64,8 @@ export const Sidebar: React.FC<SidebarProps> = ({
   onOpenCreateTicket,
   onNavigate,
   onOpenAdminTools,
+  onOpenEnvironmentModal,
+  onOpenShareModal,
   onLogout,
   isDarkMode = false,
   onToggleDarkMode,
@@ -213,6 +223,19 @@ export const Sidebar: React.FC<SidebarProps> = ({
             );
           })}
 
+          {/* Share Helpdesk Nav Item */}
+          <button
+            id="sidebar-btn-share"
+            onClick={onOpenShareModal}
+            className={`w-full flex items-center space-x-2.5 px-2.5 py-2 rounded-lg text-xs text-blue-600 dark:text-blue-400 hover:bg-blue-50/70 dark:hover:bg-blue-950/40 font-semibold transition cursor-pointer ${
+              isCollapsed ? 'justify-center' : ''
+            }`}
+            title="Share Desk with Friends (Live link, QR code, LAN guide)"
+          >
+            <Share2 className="w-4 h-4 shrink-0" />
+            {!isCollapsed && <span className="truncate">Share Helpdesk</span>}
+          </button>
+
           {/* Admin System Utilities Nav Item */}
           {currentUser.role === 'ADMIN' && onOpenAdminTools && (
             <button
@@ -229,8 +252,38 @@ export const Sidebar: React.FC<SidebarProps> = ({
           )}
         </div>
 
-        {/* Clean Sidebar Footer: Theme Toggle + User Profile + Logout */}
+        {/* Clean Sidebar Footer: Environment Pill + Theme Toggle + User Profile + Logout */}
         <div className="p-2.5 border-t border-slate-100 dark:border-slate-800 bg-slate-50/40 dark:bg-slate-900/60 shrink-0 space-y-2">
+          {/* Environment Mode Switcher Button */}
+          <button
+            id="sidebar-btn-environment"
+            type="button"
+            onClick={onOpenEnvironmentModal}
+            className={`w-full flex items-center justify-between p-2 rounded-lg border text-xs font-bold transition shadow-2xs cursor-pointer ${
+              currentEnvironment === 'UAT'
+                ? 'bg-amber-50/80 dark:bg-amber-950/30 border-amber-300/80 dark:border-amber-800 text-amber-800 dark:text-amber-200 hover:bg-amber-100 dark:hover:bg-amber-900/40'
+                : 'bg-emerald-50/80 dark:bg-emerald-950/30 border-emerald-300/80 dark:border-emerald-800 text-emerald-800 dark:text-emerald-200 hover:bg-emerald-100 dark:hover:bg-emerald-900/40'
+            } ${isCollapsed ? 'justify-center' : ''}`}
+            title={`Active Environment: ${currentEnvironment}. Click to switch.`}
+          >
+            <div className="flex items-center space-x-2 truncate">
+              {currentEnvironment === 'UAT' ? (
+                <FlaskConical className="w-4 h-4 text-amber-600 dark:text-amber-400 shrink-0" />
+              ) : (
+                <ShieldCheck className="w-4 h-4 text-emerald-600 dark:text-emerald-400 shrink-0" />
+              )}
+              {!isCollapsed && (
+                <span className="truncate">
+                  {currentEnvironment === 'UAT' ? 'UAT Sandbox' : 'Production Live'}
+                </span>
+              )}
+            </div>
+            {!isCollapsed && (
+              <span className="text-[10px] font-bold px-1.5 py-0.5 rounded bg-white/80 dark:bg-slate-800/80 shadow-2xs">
+                Switch
+              </span>
+            )}
+          </button>
           {/* Global Dark Mode Toggle */}
           {onToggleDarkMode && (
             <button

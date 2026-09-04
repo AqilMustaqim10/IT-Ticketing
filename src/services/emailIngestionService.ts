@@ -72,6 +72,26 @@ export const SAMPLE_TEST_EMAILS = [
     body: `Hi IT Helpdesk,\n\nThe POS terminal cashier machine in Grand Ballroom counter 2 suddenly stopped printing receipts. We have an ongoing banquet event with 300 guests arriving.\n\nError code on screen: "PRINTER_COM_PORT_TIMEOUT - Paper Feed Offline".\nRestarting the terminal did not solve it.\n\nPlease send someone immediately.\n\nRegards,\nAaqil Mustaqim\nCCEC Events & Banquets Team`,
     suggestedBU: 'bu-ccec',
     priority: 'URGENT' as TicketPriority,
+    attachments: [
+      {
+        name: 'POS_Terminal2_Screen_Error.png',
+        size: '1.2 MB',
+        type: 'image/png',
+        dataUrl: 'https://images.unsplash.com/photo-1556742049-0a67c5574f73?auto=format&fit=crop&w=800&q=80',
+      },
+      {
+        name: 'pos_hardware_diagnostics.log',
+        size: '48 KB',
+        type: 'text/plain',
+        dataUrl: 'data:text/plain;charset=utf-8,2026-09-03%2009:14:22%20[WARN]%20COM3%20Device%20Epson%20TM-T88VI%20unresponsive%0A2026-09-03%2009:14:25%20[ERR]%20PRINTER_COM_PORT_TIMEOUT%3A%20Handshake%20failed%20after%203000ms%0A2026-09-03%2009:14:30%20[CRIT]%20POS_DRIVER%20status%3D0xFF01%20Paper%20Feed%20Offline',
+      },
+      {
+        name: 'Banquet_Order_Batch_300Pax.pdf',
+        size: '340 KB',
+        type: 'application/pdf',
+        dataUrl: 'https://www.w3.org/WAI/ER/tests/xhtml/testfiles/resources/pdf/dummy.pdf',
+      },
+    ],
   },
   {
     id: 'sample-2',
@@ -82,6 +102,14 @@ export const SAMPLE_TEST_EMAILS = [
     body: `Hello Support Team,\n\nI am unable to log into my Microsoft Outlook 365 client this morning. It keeps asking for password repeatedly and returns error code "0x80040115".\n\nI have tried clearing browser cookies and reconnecting to corporate Wi-Fi.\n\nThank you,\nSarah Chen\nSales & Marketing Department`,
     suggestedBU: 'bu-ccec',
     priority: 'MEDIUM' as TicketPriority,
+    attachments: [
+      {
+        name: 'Outlook_Error_0x80040115.png',
+        size: '850 KB',
+        type: 'image/png',
+        dataUrl: 'https://images.unsplash.com/photo-1550751827-4bd374c3f58b?auto=format&fit=crop&w=800&q=80',
+      },
+    ],
   },
   {
     id: 'sample-3',
@@ -92,6 +120,20 @@ export const SAMPLE_TEST_EMAILS = [
     body: `Hi IT Team,\n\nThe Kitchen Display System touch monitor at the hot line station has been flickering constantly since 11:00 AM. Orders are lagging by 3-4 minutes on the screen.\n\nOutlet: Botanica Deli & Dining\nStation: Kitchen Expediter 01\n\nAppreciate quick assistance before lunch rush.\n\nDavid Kumar\nF&B Kitchen Operations`,
     suggestedBU: 'bu-fnb',
     priority: 'HIGH' as TicketPriority,
+    attachments: [
+      {
+        name: 'KDS_Display_Touch_Flicker.jpg',
+        size: '2.1 MB',
+        type: 'image/jpeg',
+        dataUrl: 'https://images.unsplash.com/photo-1581092160607-ee22621dd758?auto=format&fit=crop&w=800&q=80',
+      },
+      {
+        name: 'Kitchen_Expediter_Config.json',
+        size: '12 KB',
+        type: 'application/json',
+        dataUrl: 'data:application/json;charset=utf-8,%7B%22stationId%22%3A%22EXP-01%22%2C%22resolution%22%3A%221920x1080%22%2C%22refreshRate%22%3A60%2C%22driver%22%3A%22EloTouch_v4.2%22%7D',
+      },
+    ],
   },
   {
     id: 'sample-4',
@@ -102,6 +144,20 @@ export const SAMPLE_TEST_EMAILS = [
     body: `Dear IT Support,\n\nOur VingCard RFID keycard encoder at Front Desk Terminal 3 is showing "Interface Not Responding" when attempting to make new guest room keys for Level 12.\n\nGuest check-in queue is building up.\n\nLisa Wong\nFront Office Supervisor\nHotel Suites`,
     suggestedBU: 'bu-hotel',
     priority: 'URGENT' as TicketPriority,
+    attachments: [
+      {
+        name: 'VingCard_Interface_Error.png',
+        size: '1.4 MB',
+        type: 'image/png',
+        dataUrl: 'https://images.unsplash.com/photo-1563986768609-322da13575f3?auto=format&fit=crop&w=800&q=80',
+      },
+      {
+        name: 'Opera_PMS_Integration_Manual.pdf',
+        size: '2.8 MB',
+        type: 'application/pdf',
+        dataUrl: 'https://www.w3.org/WAI/ER/tests/xhtml/testfiles/resources/pdf/dummy.pdf',
+      },
+    ],
   },
   {
     id: 'sample-5',
@@ -409,45 +465,164 @@ class EmailIngestionService {
   }
 
   /**
-   * Automatically classifies priority from email subject and body content
+   * Strips email signatures, corporate legal footers, confidentiality notices,
+   * mobile device tags, quoted conversation threads, and opening greetings,
+   * extracting purely the core problem statement / issue content.
+   */
+  public extractProblemContent(rawBody: string): string {
+    if (!rawBody) return '';
+
+    // Strip basic HTML if present
+    let text = rawBody.replace(/<[^>]+>/g, ' ');
+    text = text.replace(/\r\n/g, '\n').replace(/\r/g, '\n');
+
+    const lines = text.split('\n');
+    const cleanLines: string[] = [];
+
+    const cutOffPatterns = [
+      /^-{3,}\s*original message\s*-{3,}/i,
+      /^-{3,}\s*forwarded message\s*-{3,}/i,
+      /^_{8,}/,
+      /^-{8,}/,
+      /^={8,}/,
+      /^from:\s+.+@.+/i,
+      /^(?:sent|date):\s+(?:monday|tuesday|wednesday|thursday|friday|saturday|sunday|\d{1,2}\s+\w+|\w+\s+\d{1,2})/i,
+      /^on\s+.+\s+wrote:\s*$/i,
+      /^at\s+.+\s+wrote:\s*$/i,
+      /^--\s*$/,
+      /^_{2,}\s*$/,
+      /^(?:thanks\s*(?:&|and)\s*best\s*regards|thanks\s*(?:&|and)\s*regards|thank\s*you\s*(?:&|and)\s*regards|best\s*regards|warm\s*regards|kind\s*regards|with\s*regards|regards|many\s*thanks|thanks\s*a\s*lot|thanks|thank\s*you(?:\s*very\s*much)?|yours\s*sincerely|yours\s*faithfully|yours\s*truly|sincerely|cheers|salam\s*hormat|salam\s*sejahtera|salam|sekian\s*terima\s*kasih|terima\s*kasih|wassalam)[,.\s!]*$/i,
+      /^sent\s+from\s+my\s+(?:iphone|ipad|galaxy|android|samsung|huawei|mobile|device)/i,
+      /^sent\s+from\s+outlook\s+for\s+(?:ios|android)/i,
+      /^get\s+outlook\s+for\s+(?:ios|android)/i,
+      /^sent\s+from\s+mail\s+for\s+windows/i,
+      /^sent\s+with\s+blackberry/i,
+      /^(?:notice\s+of\s+confidentiality|confidentiality\s+(?:notice|note|statement)|disclaimer|important\s+notice)[:.\s]*$/i,
+      /this\s+(?:email|e-mail|message)\s+(?:and\s+any\s+attachments?\s+)?(?:is|are)\s+(?:confidential|intended\s+solely|intended\s+only)/i,
+      /the\s+information\s+contained\s+in\s+this\s+(?:email|e-mail|message|transmission)\s+is\s+confidential/i,
+      /if\s+you\s+(?:have\s+received|are\s+not\s+the\s+intended\s+recipient).*?(?:in\s+error|delete|destroy)/i,
+      /please\s+consider\s+the\s+environment\s+before\s+printing/i,
+      /think\s+before\s+you\s+print/i,
+      /virus-free\.\s+www\./i,
+      /scanned\s+by\s+(?:symantec|mcafee|barracuda|avast|sophos|kaspersky|clamav)/i,
+    ];
+
+    for (let i = 0; i < lines.length; i++) {
+      const line = lines[i];
+      const trimmed = line.trim();
+
+      if (trimmed.startsWith('>')) continue;
+
+      let isCutOff = false;
+      for (const pattern of cutOffPatterns) {
+        if (pattern.test(trimmed)) {
+          if (cleanLines.some((l) => l.trim().length > 0)) {
+            isCutOff = true;
+            break;
+          }
+        }
+      }
+
+      if (isCutOff) break;
+      cleanLines.push(line);
+    }
+
+    const contactLinePattern = /^(?:(?:tel|phone|mobile|ext|extension|fax|hp|h\/p|office)[:.\s]+[\d\s()+-]+|(?:email|e-mail)[:.\s]+[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}|(?:website|web)[:.\s]+https?:\/\/|www\.[a-zA-Z0-9-]+\.[a-zA-Z]{2,})/i;
+
+    while (cleanLines.length > 0) {
+      const last = cleanLines[cleanLines.length - 1].trim();
+      if (!last || contactLinePattern.test(last)) {
+        cleanLines.pop();
+      } else {
+        break;
+      }
+    }
+
+    const greetingPattern = /^(?:hi|hello|dear|good\s+(?:morning|afternoon|evening|day))\s*(?:it\s+support(?:\s+team)?|support(?:\s+team)?|helpdesk|team|all|everyone|sir|madam)?\s*[,.:!]*$/i;
+
+    let startIdx = 0;
+    while (startIdx < cleanLines.length && !cleanLines[startIdx].trim()) {
+      startIdx++;
+    }
+
+    if (startIdx < cleanLines.length && greetingPattern.test(cleanLines[startIdx].trim())) {
+      const hasRemainingContent = cleanLines.slice(startIdx + 1).some((l) => l.trim().length > 0);
+      if (hasRemainingContent) {
+        startIdx++;
+        while (startIdx < cleanLines.length && !cleanLines[startIdx].trim()) {
+          startIdx++;
+        }
+      }
+    }
+
+    const finalResult = cleanLines
+      .slice(startIdx)
+      .join('\n')
+      .replace(/\n{3,}/g, '\n\n')
+      .trim();
+
+    return finalResult || text.trim() || '(No problem description provided)';
+  }
+
+  /**
+   * Automatically classifies priority from email subject and problem content.
+   * Prevents false URGENT flags caused by corporate disclaimers or footer phrases (e.g. "immediately").
+   * Routine IT issues (printer, jam, toner, mouse, keyboard, monitor, display, wifi, password, email) default to MEDIUM.
    */
   public detectPriority(subject: string, body: string): TicketPriority {
-    const text = `${subject} ${body}`.toLowerCase();
+    const cleanSub = subject.toLowerCase().trim();
+    const cleanBody = body.toLowerCase().trim();
+    const combined = `${cleanSub} \n ${cleanBody}`;
 
+    // 1. Explicit priority tag in subject brackets or form prefix
     if (
-      text.includes('urgent') ||
-      text.includes('emergency') ||
-      text.includes('critical') ||
-      text.includes('immediate') ||
-      text.includes('pos terminal down') ||
-      text.includes('system down') ||
-      text.includes('cannot check in')
+      /\[\s*(?:urgent|kecemasan)\s*\]/i.test(cleanSub) ||
+      /^(?:urgency|priority)\s*:\s*(?:urgent|kecemasan)\b/im.test(cleanBody)
     ) {
       return 'URGENT';
     }
-
     if (
-      text.includes('kds') ||
-      text.includes('kitchen') ||
-      text.includes('delay') ||
-      text.includes('flickering') ||
-      text.includes('p1') ||
-      text.includes('high priority')
+      /\[\s*(?:high(?:\s+priority)?|p1|tinggi)\s*\]/i.test(cleanSub) ||
+      /^(?:urgency|priority)\s*:\s*(?:high|p1|tinggi)\b/im.test(cleanBody)
     ) {
       return 'HIGH';
     }
-
     if (
-      text.includes('printer') ||
-      text.includes('mouse') ||
-      text.includes('keyboard') ||
-      text.includes('monitor') ||
-      text.includes('slow')
+      /\[\s*(?:low(?:\s+priority)?|p3|rendah)\s*\]/i.test(cleanSub) ||
+      /^(?:urgency|priority)\s*:\s*(?:low|p3|rendah)\b/im.test(cleanBody)
+    ) {
+      return 'LOW';
+    }
+    if (
+      /\[\s*(?:medium(?:\s+priority)?|p2|sederhana)\s*\]/i.test(cleanSub) ||
+      /^(?:urgency|priority)\s*:\s*(?:medium|p2|sederhana)\b/im.test(cleanBody)
     ) {
       return 'MEDIUM';
     }
 
-    return 'LOW';
+    // 2. Critical Emergencies / Outages (URGENT)
+    const urgentRegex = /\b(?:urgent|urgently|emergency|kecemasan|critical\s+outage|system\s+down|systems\s+down|hotel\s+down|opera\s+down|pms\s+down|cannot\s+check\s*in|total\s+outage|total\s+failure|blackout|power\s+outage|p0|sev-?1|severity\s*1)\b/i;
+
+    if (urgentRegex.test(combined)) {
+      return 'URGENT';
+    }
+
+    // 3. High Impact / Production Blockers (HIGH)
+    const highRegex = /\b(?:high\s+priority|p1|sev-?2|severity\s*2|pos(?:\s+terminal)?\s+down|pos\s+offline|pos\s+broken|kds\s+down|kitchen\s+display\s+down|turnstile\s+down|door\s+lock\s+failure|keycard\s+(?:encoder\s+)?(?:down|failure|offline)|guests?\s+waiting|queue\s+building|operations?\s+halted|halted|production\s+down)\b/i;
+
+    if (highRegex.test(combined)) {
+      return 'HIGH';
+    }
+
+    // 4. Low Priority (LOW)
+    const lowRegex = /\b(?:low\s+priority|p3|sev-?4|cosmetic|minor|enhancement|suggestion|when\s+free|no\s+rush|whenever\s+possible|fyi|general\s+inquiry|question)\b/i;
+
+    if (lowRegex.test(combined)) {
+      return 'LOW';
+    }
+
+    // 5. Default IT Support Priority: MEDIUM
+    return 'MEDIUM';
   }
 
   /**
@@ -614,7 +789,8 @@ class EmailIngestionService {
 
     const cleanFrom = rawEmail.from.trim();
     const cleanSubject = rawEmail.subject.trim();
-    const cleanBody = rawEmail.body.trim();
+    // Extract strictly the problem description, stripping signatures, greetings, and footers
+    const cleanBody = this.extractProblemContent(rawEmail.body).trim() || '(No problem description provided)';
     const mappedAttachments = this.mapAttachments(rawEmail.attachments);
 
     // 1. Resolve User & Organization
@@ -634,7 +810,7 @@ class EmailIngestionService {
       if (existingTicket) {
         // Append email as a reply comment activity
         const updateRes = storageService.updateTicket(matchedUser, existingTicket.id, {
-          comment: `[Inbound Email Reply from ${cleanFrom}]:\n\n${cleanBody}`,
+          comment: cleanBody,
           newAttachments: mappedAttachments,
         });
 
@@ -687,14 +863,13 @@ class EmailIngestionService {
     }
 
     // 3. Create a brand new Ticket
-    const sanitizedTitle = cleanSubject.replace(/^(fwd|fw|re):\s*/i, '').trim();
+    const sanitizedTitle = cleanSubject.replace(/^(fwd|fw|re):\s*/i, '').trim() || 'Inbound Email Support Request';
     const priority = config.autoExtractPriority ? this.detectPriority(cleanSubject, cleanBody) : 'MEDIUM';
 
-    const fullDescription = `${cleanBody}\n\n---\n📨 [Created automatically via Inbound Email from ${cleanFrom}]`;
-
+    // Pure problem content as ticket description
     const newTicket = storageService.createTicket(matchedUser, {
       title: sanitizedTitle,
-      description: fullDescription,
+      description: cleanBody,
       priority,
       businessUnitId: resolvedBU.id,
       departmentId: resolvedDept.id,
@@ -746,6 +921,35 @@ class EmailIngestionService {
   }
 
   /**
+   * Triggers automated email notification when a ticket status changes (e.g. IN_PROGRESS, RESOLVED)
+   */
+  public async notifyTicketStatusChange(params: {
+    ticketId: string;
+    ticketNumber: string;
+    ticketTitle: string;
+    newStatus: string;
+    oldStatus: string;
+    requesterEmail: string;
+    requesterName?: string;
+    technicianName?: string;
+    resolutionNotes?: string;
+    businessUnitName?: string;
+  }): Promise<{ success: boolean; delivered: boolean; message: string }> {
+    try {
+      const response = await fetch('/api/email/notify-status-change', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(params),
+      });
+      const data = await response.json();
+      return data;
+    } catch (err: any) {
+      console.error('Failed to dispatch status change notification email:', err);
+      return { success: false, delivered: false, message: err.message };
+    }
+  }
+
+  /**
    * Pulls sample emails and simulates mailbox sync
    */
   public async syncSampleMailbox(): Promise<{
@@ -761,6 +965,7 @@ class EmailIngestionService {
       to: sample.to,
       subject: sample.subject,
       body: sample.body,
+      attachments: (sample as any).attachments,
     });
 
     if (res.success && res.ticket) {

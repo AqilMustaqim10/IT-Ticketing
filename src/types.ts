@@ -42,6 +42,13 @@ export type TimeframeOption = 'DAILY' | 'WEEKLY' | 'MONTHLY' | 'YEARLY';
  */
 export type AppView = 'DASHBOARD' | 'USERS' | 'BRANDING' | 'REPORTS' | 'GIT_GUIDE' | 'EMAIL_INTEGRATION';
 
+/**
+ * Operational Environment Mode:
+ * - PRODUCTION: Live operational incident data, official mailbox ingestion, production SLAs.
+ * - UAT: User Acceptance Testing sandbox, test scenario seeders, safe trial environment for QA and sharing with colleagues.
+ */
+export type AppEnvironment = 'PRODUCTION' | 'UAT';
+
 // ==========================================
 // 1.5 Email Ingestion & POP3 Models
 // ==========================================
@@ -90,6 +97,9 @@ export interface EmailSettings {
   enableAutoReply?: boolean;
   autoReplySubjectTemplate?: string;
   autoReplyBodyTemplate?: string;
+  enableStatusChangeEmails?: boolean;
+  statusInProgressTemplate?: string;
+  statusResolvedTemplate?: string;
   lastSyncTimestamp?: string;
   // Aliases for multi-schema compatibility
   username?: string;
@@ -116,6 +126,9 @@ export interface Pop3MailboxConfig extends EmailSettings {
   enableAutoReply: boolean;
   autoReplySubjectTemplate?: string;
   autoReplyBodyTemplate?: string;
+  enableStatusChangeEmails?: boolean;
+  statusInProgressTemplate?: string;
+  statusResolvedTemplate?: string;
   lastSyncTimestamp?: string;
 }
 
@@ -129,7 +142,7 @@ export interface InboundEmailLog {
   bodyPreview: string;
   rawBody: string;
   receivedAt: string;
-  status: 'PROCESSED' | 'FAILED' | 'REPLIED_TO_EXISTING';
+  status: 'PROCESSED' | 'FAILED' | 'REPLIED_TO_EXISTING' | 'STATUS_NOTIFICATION_SENT' | 'STATUS_NOTIFICATION_FAILED';
   createdTicketId?: string;
   createdTicketNumber?: string;
   matchedUserId?: string;

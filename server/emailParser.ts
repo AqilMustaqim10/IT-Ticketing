@@ -21,6 +21,7 @@ export interface ParsedEmail {
   date: string;
   textBody: string;
   htmlBody: string;
+  problemContent?: string;
   attachments: ParsedEmailAttachment[];
   rawHeaders: Record<string, string>;
 }
@@ -119,6 +120,134 @@ export function htmlToPlainText(html: string): string {
     .replace(/&#39;/gi, "'")
     .replace(/\n{3,}/g, '\n\n')
     .trim();
+}
+
+/**
+ * Strips email signatures, corporate legal footers, confidentiality notices,
+ * mobile device tags, quoted conversation threads, and opening greetings,
+ * extracting purely the core problem statement / issue content.
+ */
+export function extractProblemContent(rawBody: string): string {
+  if (!rawBody) return '';
+
+  // If HTML is provided directly, convert to plain text first
+  let text = rawBody.includes('<') && rawBody.includes('>') ? htmlToPlainText(rawBody) : rawBody;
+
+  // Normalize newlines
+  text = text.replace(/\r\n/g, '\n').replace(/\r/g, '\n');
+
+  // Split into lines
+  const lines = text.split('\n');
+  const cleanLines: string[] = [];
+
+  // Patterns that indicate the beginning of a signature, quoted history, or disclaimer
+  const cutOffPatterns = [
+    // Quoted email thread headers & dividers
+    /^-{3,}\s*original message\s*-{3,}/i,
+    /^-{3,}\s*forwarded message\s*-{3,}/i,
+    /^_{8,}/,
+    /^-{8,}/,
+    /^={8,}/,
+    /^from:\s+.+@.+/i,
+    /^(?:sent|date):\s+(?:monday|tuesday|wednesday|thursday|friday|saturday|sunday|\d{1,2}\s+\w+|\w+\s+\d{1,2})/i,
+    /^on\s+.+\s+wrote:\s*$/i,
+    /^at\s+.+\s+wrote:\s*$/i,
+
+    // Standard RFC signature delimiter (-- )
+    /^--\s*$/,
+    /^_{2,}\s*$/,
+
+    // Common Sign-offs / Closings (English & Malay)
+    /^(?:thanks\s*(?:&|and)\s*best\s*regards|thanks\s*(?:&|and)\s*regards|thank\s*you\s*(?:&|and)\s*regards|best\s*regards|warm\s*regards|kind\s*regards|with\s*regards|regards|many\s*thanks|thanks\s*a\s*lot|thanks|thank\s*you(?:\s*very\s*much)?|yours\s*sincerely|yours\s*faithfully|yours\s*truly|sincerely|cheers|salam\s*hormat|salam\s*sejahtera|salam|sekian\s*terima\s*kasih|terima\s*kasih|wassalam)[,.\s!]*$/i,
+
+    // Mobile device stamps
+    /^sent\s+from\s+my\s+(?:iphone|ipad|galaxy|android|samsung|huawei|mobile|device)/i,
+    /^sent\s+from\s+outlook\s+for\s+(?:ios|android)/i,
+    /^get\s+outlook\s+for\s+(?:ios|android)/i,
+    /^sent\s+from\s+mail\s+for\s+windows/i,
+    /^sent\s+with\s+blackberry/i,
+
+    // Legal / Confidentiality footers & Disclaimers
+    /^(?:notice\s+of\s+confidentiality|confidentiality\s+(?:notice|note|statement)|disclaimer|important\s+notice)[:.\s]*$/i,
+    /this\s+(?:email|e-mail|message)\s+(?:and\s+any\s+attachments?\s+)?(?:is|are)\s+(?:confidential|intended\s+solely|intended\s+only)/i,
+    /the\s+information\s+contained\s+in\s+this\s+(?:email|e-mail|message|transmission)\s+is\s+confidential/i,
+    /if\s+you\s+(?:have\s+received|are\s+not\s+the\s+intended\s+recipient).*?(?:in\s+error|delete|destroy)/i,
+    /please\s+consider\s+the\s+environment\s+before\s+printing/i,
+    /think\s+before\s+you\s+print/i,
+    /virus-free\.\s+www\./i,
+    /scanned\s+by\s+(?:symantec|mcafee|barracuda|avast|sophos|kaspersky|clamav)/i,
+  ];
+
+  for (let i = 0; i < lines.length; i++) {
+    const line = lines[i];
+    const trimmed = line.trim();
+
+    // Skip blockquote lines that start with ">"
+    if (trimmed.startsWith('>')) {
+      continue;
+    }
+
+    // Check if this line marks the start of a signature, quote, or footer
+    let isCutOff = false;
+    for (const pattern of cutOffPatterns) {
+      if (pattern.test(trimmed)) {
+        // If it's a sign-off or delimiter, ensure we have already gathered some text
+        // so we don't accidentally cut everything if message is literally just one word
+        if (cleanLines.some((l) => l.trim().length > 0)) {
+          isCutOff = true;
+          break;
+        }
+      }
+    }
+
+    if (isCutOff) {
+      break;
+    }
+
+    cleanLines.push(line);
+  }
+
+  // Remove trailing contact info lines (Phone, Email, Web, Extension) from the end of cleanLines
+  const contactLinePattern = /^(?:(?:tel|phone|mobile|ext|extension|fax|hp|h\/p|office)[:.\s]+[\d\s()+-]+|(?:email|e-mail)[:.\s]+[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}|(?:website|web)[:.\s]+https?:\/\/|www\.[a-zA-Z0-9-]+\.[a-zA-Z]{2,})/i;
+
+  while (cleanLines.length > 0) {
+    const last = cleanLines[cleanLines.length - 1].trim();
+    if (!last || contactLinePattern.test(last)) {
+      cleanLines.pop();
+    } else {
+      break;
+    }
+  }
+
+  // Strip standalone opening greetings if followed by actual problem content
+  // e.g. "Hi IT Support," or "Dear Helpdesk Team,"
+  const greetingPattern = /^(?:hi|hello|dear|good\s+(?:morning|afternoon|evening|day))\s*(?:it\s+support(?:\s+team)?|support(?:\s+team)?|helpdesk|team|all|everyone|sir|madam)?\s*[,.:!]*$/i;
+
+  let startIdx = 0;
+  while (startIdx < cleanLines.length && !cleanLines[startIdx].trim()) {
+    startIdx++;
+  }
+
+  if (startIdx < cleanLines.length && greetingPattern.test(cleanLines[startIdx].trim())) {
+    // Check if there is non-empty content after the greeting
+    const hasRemainingContent = cleanLines.slice(startIdx + 1).some((l) => l.trim().length > 0);
+    if (hasRemainingContent) {
+      startIdx++;
+      // skip any blank lines directly following greeting
+      while (startIdx < cleanLines.length && !cleanLines[startIdx].trim()) {
+        startIdx++;
+      }
+    }
+  }
+
+  const finalResult = cleanLines
+    .slice(startIdx)
+    .join('\n')
+    .replace(/\n{3,}/g, '\n\n')
+    .trim();
+
+  // If extraction yielded something, return it; otherwise fallback to original sanitized text
+  return finalResult || text.trim() || '(No problem description provided)';
 }
 
 /**
@@ -292,6 +421,7 @@ export function parseRawEmail(rawMessage: string): ParsedEmail {
   parseMimeBody(bodyBlock, contentType, contentTransferEncoding, parsedBody);
 
   const finalTextBody = parsedBody.textBody || (parsedBody.htmlBody ? htmlToPlainText(parsedBody.htmlBody) : '');
+  const problemContent = extractProblemContent(finalTextBody || parsedBody.htmlBody || '');
 
   return {
     messageId,
@@ -302,6 +432,7 @@ export function parseRawEmail(rawMessage: string): ParsedEmail {
     date,
     textBody: finalTextBody,
     htmlBody: parsedBody.htmlBody,
+    problemContent,
     attachments: parsedBody.attachments,
     rawHeaders,
   };

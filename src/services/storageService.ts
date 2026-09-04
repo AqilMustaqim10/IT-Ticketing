@@ -19,6 +19,7 @@ import {
   TicketAttachment,
   BusinessUnitBranding,
   EmailSettings,
+  AppEnvironment,
 } from '../types';
 import {
   SEED_BUSINESS_UNITS,
@@ -28,14 +29,42 @@ import {
 } from '../data/seedData';
 import { postgresBridge } from './postgresBridgeService';
 
-// Storage keys for offline cache
+export const ENV_STORAGE_KEY = 'it_ticketing_environment_mode';
+
+/**
+ * Resolves the active environment (PRODUCTION vs UAT).
+ * Reads from URL parameter (?env=uat or ?env=prod) first, then localStorage.
+ * Defaults to PRODUCTION.
+ */
+export function resolveCurrentEnvironment(): AppEnvironment {
+  try {
+    if (typeof window !== 'undefined') {
+      const params = new URLSearchParams(window.location.search);
+      const envParam = params.get('env')?.toUpperCase();
+      if (envParam === 'UAT' || envParam === 'PRODUCTION') {
+        return envParam as AppEnvironment;
+      }
+      const stored = localStorage.getItem(ENV_STORAGE_KEY);
+      if (stored === 'UAT' || stored === 'PRODUCTION') {
+        return stored as AppEnvironment;
+      }
+    }
+  } catch {}
+  return 'PRODUCTION';
+}
+
+const getEnvSuffix = (): string => {
+  return resolveCurrentEnvironment() === 'UAT' ? 'uat' : 'prod';
+};
+
+// Partitioned storage keys for strict UAT vs Production data isolation
 const STORAGE_KEYS = {
-  BUSINESS_UNITS: 'it_ticketing_business_units_v2',
-  DEPARTMENTS: 'it_ticketing_departments_v2',
-  USERS: 'it_ticketing_users_v2',
-  TICKETS: 'it_ticketing_tickets_v2',
-  CURRENT_USER: 'it_ticketing_current_user_v2',
-  EMAIL_SETTINGS: 'it_ticketing_email_settings_v2',
+  get BUSINESS_UNITS() { return `it_ticketing_business_units_${getEnvSuffix()}`; },
+  get DEPARTMENTS() { return `it_ticketing_departments_${getEnvSuffix()}`; },
+  get USERS() { return `it_ticketing_users_${getEnvSuffix()}`; },
+  get TICKETS() { return `it_ticketing_tickets_${getEnvSuffix()}`; },
+  get CURRENT_USER() { return `it_ticketing_current_user_${getEnvSuffix()}`; },
+  get EMAIL_SETTINGS() { return `it_ticketing_email_settings_${getEnvSuffix()}`; },
 };
 
 export const DEFAULT_USER_PASSWORD = 'password123';
@@ -90,6 +119,35 @@ class StorageService {
    * Initializes the repository with seed data if not present in browser storage.
    */
   public initialize(): void {
+    const currentEnv = this.getActiveEnvironment();
+    const envSuffix = currentEnv === 'UAT' ? 'uat' : 'prod';
+
+    // Migrate legacy data (_v2) into PRODUCTION partition (_prod) if not present yet
+    if (envSuffix === 'prod') {
+      try {
+        const legacyTickets = localStorage.getItem('it_ticketing_tickets_v2');
+        if (legacyTickets && !localStorage.getItem('it_ticketing_tickets_prod')) {
+          localStorage.setItem('it_ticketing_tickets_prod', legacyTickets);
+        }
+        const legacyUsers = localStorage.getItem('it_ticketing_users_v2');
+        if (legacyUsers && !localStorage.getItem('it_ticketing_users_prod')) {
+          localStorage.setItem('it_ticketing_users_prod', legacyUsers);
+        }
+        const legacyBUs = localStorage.getItem('it_ticketing_business_units_v2');
+        if (legacyBUs && !localStorage.getItem('it_ticketing_business_units_prod')) {
+          localStorage.setItem('it_ticketing_business_units_prod', legacyBUs);
+        }
+        const legacyDepts = localStorage.getItem('it_ticketing_departments_v2');
+        if (legacyDepts && !localStorage.getItem('it_ticketing_departments_prod')) {
+          localStorage.setItem('it_ticketing_departments_prod', legacyDepts);
+        }
+        const legacyUser = localStorage.getItem('it_ticketing_current_user_v2');
+        if (legacyUser && !localStorage.getItem('it_ticketing_current_user_prod')) {
+          localStorage.setItem('it_ticketing_current_user_prod', legacyUser);
+        }
+      } catch {}
+    }
+
     if (!localStorage.getItem(STORAGE_KEYS.BUSINESS_UNITS)) {
       localStorage.setItem(STORAGE_KEYS.BUSINESS_UNITS, JSON.stringify(SEED_BUSINESS_UNITS));
     }
@@ -100,11 +158,144 @@ class StorageService {
       localStorage.setItem(STORAGE_KEYS.USERS, JSON.stringify(SEED_USERS));
     }
     if (!localStorage.getItem(STORAGE_KEYS.TICKETS)) {
-      localStorage.setItem(STORAGE_KEYS.TICKETS, JSON.stringify(SEED_TICKETS));
+      const initialTickets = currentEnv === 'UAT' ? this.getUatInitialTickets() : SEED_TICKETS;
+      localStorage.setItem(STORAGE_KEYS.TICKETS, JSON.stringify(initialTickets));
     }
     if (!localStorage.getItem(STORAGE_KEYS.CURRENT_USER)) {
       localStorage.setItem(STORAGE_KEYS.CURRENT_USER, JSON.stringify(SEED_USERS[0]));
     }
+  }
+
+  // ==========================================
+  // Environment Management (UAT vs Production)
+  // ==========================================
+
+  public getActiveEnvironment(): AppEnvironment {
+    return resolveCurrentEnvironment();
+  }
+
+  public setActiveEnvironment(env: AppEnvironment): void {
+    localStorage.setItem(ENV_STORAGE_KEY, env);
+    this.initialize();
+    if (typeof window !== 'undefined') {
+      window.dispatchEvent(new CustomEvent('it_ticketing_environment_changed', { detail: { env } }));
+    }
+  }
+
+  public getEnvironmentStats(): { prodTicketCount: number; uatTicketCount: number } {
+    let prodCount = 0;
+    let uatCount = 0;
+    try {
+      const prodRaw = localStorage.getItem('it_ticketing_tickets_prod') || localStorage.getItem('it_ticketing_tickets_v2');
+      if (prodRaw) prodCount = JSON.parse(prodRaw).length;
+    } catch {}
+    try {
+      const uatRaw = localStorage.getItem('it_ticketing_tickets_uat');
+      if (uatRaw) uatCount = JSON.parse(uatRaw).length;
+    } catch {}
+    return { prodTicketCount: prodCount, uatTicketCount: uatCount };
+  }
+
+  public resetUatSandbox(): void {
+    localStorage.setItem('it_ticketing_business_units_uat', JSON.stringify(SEED_BUSINESS_UNITS));
+    localStorage.setItem('it_ticketing_departments_uat', JSON.stringify(SEED_DEPARTMENTS));
+    localStorage.setItem('it_ticketing_users_uat', JSON.stringify(SEED_USERS));
+    localStorage.setItem('it_ticketing_tickets_uat', JSON.stringify(this.getUatInitialTickets()));
+    localStorage.setItem('it_ticketing_current_user_uat', JSON.stringify(SEED_USERS[0]));
+    if (typeof window !== 'undefined') {
+      window.dispatchEvent(new CustomEvent('it_ticketing_environment_changed', { detail: { env: 'UAT' } }));
+    }
+  }
+
+  public getUatInitialTickets(): Ticket[] {
+    return [
+      ...SEED_TICKETS,
+      {
+        id: 'uat-tkt-101',
+        ticketNumber: 'UAT-2026-001',
+        title: 'POS Terminal 2 Paper Feed Offline & Receipt Print Failure',
+        description: 'During banquet trial checkouts, Grand Ballroom POS counter 2 printer fails with error "PRINTER_COM_PORT_TIMEOUT". Requires device driver handshake reset.',
+        priority: 'URGENT',
+        status: 'OPEN',
+        businessUnitId: 'bu-ccec',
+        departmentId: 'dept-ccec-events',
+        createdById: 'user-ccec-staff-1',
+        assignedToId: 'it-ccec-1',
+        resolutionNotes: '',
+        createdAt: new Date(Date.now() - 3600000).toISOString(),
+        updatedAt: new Date(Date.now() - 3600000).toISOString(),
+        attachments: [
+          {
+            id: 'att-uat-1',
+            name: 'POS_Terminal2_Screen_Error.png',
+            url: 'https://images.unsplash.com/photo-1556742049-0a67c5574f73?auto=format&fit=crop&w=800&q=80',
+            size: 1250000,
+            type: 'image/png',
+            uploadedAt: new Date().toISOString(),
+            uploadedBy: 'Aaqil Mustaqim',
+          },
+          {
+            id: 'att-uat-2',
+            name: 'com3_printer_handshake.log',
+            url: 'data:text/plain;charset=utf-8,2026-09-03%2014%3A02%20%5BERR%5D%20COM3%20Port%20Timeout%20after%203000ms%0A2026-09-03%2014%3A05%20%5BCRIT%5D%20Epson%20TM-T88VI%20Paper%20Feed%20Motor%20Sensor%200x00FF%20Offline',
+            size: 14200,
+            type: 'text/plain',
+            uploadedAt: new Date().toISOString(),
+            uploadedBy: 'Aaqil Mustaqim',
+          },
+        ],
+        activities: [
+          {
+            id: 'act-uat-1',
+            ticketId: 'uat-tkt-101',
+            userId: 'user-ccec-staff-1',
+            userName: 'Aaqil Mustaqim',
+            userRole: 'USER',
+            action: 'COMMENT',
+            message: 'Simulated UAT incident submitted. Technicians please verify ticket status transition to IN_PROGRESS.',
+            timestamp: new Date(Date.now() - 3600000).toISOString(),
+          },
+        ],
+      },
+      {
+        id: 'uat-tkt-102',
+        ticketNumber: 'UAT-2026-002',
+        title: 'VingCard RFID Keycard Encoder Interface Not Responding',
+        description: 'Front Desk Terminal 3 key encoder disconnected from Oracle Opera PMS. Guest room keys cannot be written.',
+        priority: 'HIGH',
+        status: 'IN_PROGRESS',
+        businessUnitId: 'bu-hotel',
+        departmentId: 'dept-hotel-frontoffice',
+        createdById: 'user-hotel-staff-1',
+        assignedToId: 'it-hotel-1',
+        resolutionNotes: '',
+        createdAt: new Date(Date.now() - 7200000).toISOString(),
+        updatedAt: new Date(Date.now() - 1800000).toISOString(),
+        attachments: [
+          {
+            id: 'att-uat-3',
+            name: 'Encoder_Error_Screen.png',
+            url: 'https://images.unsplash.com/photo-1563986768609-322da13575f3?auto=format&fit=crop&w=800&q=80',
+            size: 980000,
+            type: 'image/png',
+            uploadedAt: new Date().toISOString(),
+            uploadedBy: 'Lisa Wong',
+          },
+        ],
+        activities: [
+          {
+            id: 'act-uat-2',
+            ticketId: 'uat-tkt-102',
+            userId: 'it-hotel-1',
+            userName: 'Hotel IT Support',
+            userRole: 'IT',
+            action: 'STATUS_CHANGED',
+            message: 'Changed status from OPEN to IN_PROGRESS. Checking serial cable baud rate in Opera workstation config.',
+            timestamp: new Date(Date.now() - 1800000).toISOString(),
+          },
+        ],
+      },
+    ];
   }
 
   /**

@@ -1,11 +1,12 @@
 import express from 'express';
 import path from 'path';
 import fs from 'fs';
+import os from 'os';
 import { createServer as createViteServer } from 'vite';
 import pg from 'pg';
 import dotenv from 'dotenv';
 import { testPop3Mailbox } from './server/pop3Client';
-import { testSmtpServer } from './server/smtpClient';
+import { testSmtpServer, sendSmtpEmail } from './server/smtpClient';
 import {
   initEmailTables,
   getEmailConfig,
@@ -15,7 +16,7 @@ import {
   startBackgroundEmailPoller,
   ServerPop3Config,
 } from './server/emailIngestionEngine';
-import { parseRawEmail } from './server/emailParser';
+import { parseRawEmail, extractProblemContent } from './server/emailParser';
 
 dotenv.config();
 
@@ -91,6 +92,39 @@ async function startServer() {
 
   // Start background POP3 email poller
   startBackgroundEmailPoller(getDbPool());
+
+  // ==========================================
+  // System & Network Sharing Information Endpoint
+  // ==========================================
+  app.get('/api/system/network-info', (req, res) => {
+    try {
+      const interfaces = os.networkInterfaces();
+      const localIps: string[] = [];
+
+      for (const name of Object.keys(interfaces)) {
+        for (const net of interfaces[name] || []) {
+          // Skip over non-IPv4 and internal (i.e. 127.0.0.1) addresses
+          if (net.family === 'IPv4' && !net.internal) {
+            localIps.push(net.address);
+          }
+        }
+      }
+
+      res.json({
+        success: true,
+        port: 3000,
+        localIps,
+        hostname: os.hostname(),
+        platform: os.platform(),
+        hostHeader: req.headers.host || `localhost:3000`,
+        protocol: req.headers['x-forwarded-proto'] || req.protocol || 'http',
+        nodeEnv: process.env.NODE_ENV || 'development',
+        serverTime: new Date().toISOString(),
+      });
+    } catch (err: any) {
+      res.status(500).json({ success: false, error: err.message });
+    }
+  });
 
   // ==========================================
   // PostgreSQL Database Health & API Endpoints
@@ -834,6 +868,162 @@ async function startServer() {
     }
   });
 
+  // POST: Trigger Automated Email Notification to Requester on Ticket Status Change (IN_PROGRESS, RESOLVED, etc.)
+  app.post('/api/email/notify-status-change', async (req, res) => {
+    try {
+      const {
+        ticketId,
+        ticketNumber,
+        ticketTitle,
+        newStatus,
+        oldStatus,
+        requesterEmail,
+        requesterName,
+        technicianName,
+        resolutionNotes,
+        businessUnitName,
+      } = req.body;
+
+      if (!requesterEmail || !ticketNumber || !newStatus) {
+        return res.status(400).json({ error: 'Missing required parameters: requesterEmail, ticketNumber, newStatus' });
+      }
+
+      const config = getEmailConfig();
+
+      // Craft professional status-specific notification subject and body
+      let subject = `[${ticketNumber}] Support Ticket Update: Status set to ${newStatus}`;
+      let body = '';
+
+      if (newStatus === 'IN_PROGRESS') {
+        subject = `[${ticketNumber}] In Progress: ${ticketTitle}`;
+        body = `Dear ${requesterName || 'Colleague'},\n\n` +
+          `Your IT support request has been accepted and is now IN PROGRESS.\n\n` +
+          `Ticket Details:\n` +
+          `• Ticket Number: [${ticketNumber}]\n` +
+          `• Subject: ${ticketTitle}\n` +
+          `• Business Unit: ${businessUnitName || 'Corporate Operations'}\n` +
+          `• Current Status: IN PROGRESS (Active Troubleshooting)\n` +
+          `• Assigned Technician: ${technicianName || 'IT Support Team'}\n\n` +
+          `Our technical team is actively working on your case. You do not need to call or visit the IT desk—we will notify you via email as soon as the issue is resolved.\n\n` +
+          `Best regards,\n` +
+          `${businessUnitName || 'UOH'} IT Support & Systems Helpdesk`;
+      } else if (newStatus === 'RESOLVED' || newStatus === 'CLOSED') {
+        const isResolved = newStatus === 'RESOLVED';
+        subject = `[${ticketNumber}] ${isResolved ? 'Resolved' : 'Closed'}: ${ticketTitle}`;
+        body = `Dear ${requesterName || 'Colleague'},\n\n` +
+          `Good news! Your IT support ticket [${ticketNumber}] has been marked as ${newStatus} by ${technicianName || 'IT Support'}.\n\n` +
+          `Resolution Summary:\n` +
+          `• Ticket Number: [${ticketNumber}]\n` +
+          `• Subject: ${ticketTitle}\n` +
+          `• Business Unit: ${businessUnitName || 'Corporate Operations'}\n` +
+          `• Final Status: ${newStatus}\n` +
+          `• Attended By: ${technicianName || 'IT Specialist'}\n` +
+          (resolutionNotes ? `• Technical Resolution Notes: ${resolutionNotes}\n\n` : '\n') +
+          `If everything is working to your satisfaction, no further action is required.\n` +
+          `If you are still experiencing issues, you may reply directly to this email to reopen your ticket.\n\n` +
+          `Thank you for your patience,\n` +
+          `${businessUnitName || 'UOH'} IT Support & Systems Helpdesk`;
+      } else {
+        subject = `[${ticketNumber}] Status Changed to ${newStatus}: ${ticketTitle}`;
+        body = `Dear ${requesterName || 'Colleague'},\n\n` +
+          `Your support ticket [${ticketNumber}] status has been updated to "${newStatus}" by ${technicianName || 'IT Support'}.\n\n` +
+          `• Ticket: [${ticketNumber}] - ${ticketTitle}\n` +
+          `• Status: ${newStatus}\n\n` +
+          `Best regards,\n` +
+          `${businessUnitName || 'UOH'} IT Service Desk`;
+      }
+
+      let delivered = false;
+      let errorMessage: string | undefined;
+
+      const smtpHost = config.smtpHost || config.host;
+      const smtpPort = config.smtpPort || (config.smtpUseSsl ? 465 : 587);
+      const smtpUser = config.smtpUsername || config.username || config.emailAddress;
+      const smtpPass = config.smtpPassword || config.appPassword || '';
+      const senderFrom = config.emailAddress || 'ticket.support@uohospitality.com.my';
+      const senderName = config.senderDisplayName || `${businessUnitName || 'UOH'} IT Helpdesk`;
+
+      // Dispatch genuine SMTP outbound email if server is accessible
+      if (smtpHost && requesterEmail) {
+        try {
+          console.log(`[SMTP Outbound] Sending status update email to ${requesterEmail} for ticket ${ticketNumber} (${newStatus})...`);
+          const sendResult = await sendSmtpEmail({
+            host: smtpHost,
+            port: smtpPort,
+            useSsl: config.smtpUseSsl !== undefined ? config.smtpUseSsl : (smtpPort === 465),
+            username: smtpUser,
+            password: smtpPass,
+            from: senderFrom,
+            fromName: senderName,
+            to: requesterEmail,
+            subject,
+            body,
+            timeoutMs: 12000,
+          });
+
+          if (sendResult.success) {
+            delivered = true;
+            console.log(`[SMTP Outbound] Successfully delivered status email to ${requesterEmail} (${sendResult.latencyMs}ms).`);
+          } else {
+            errorMessage = sendResult.message;
+            console.warn(`[SMTP Outbound] Delivery to ${requesterEmail} failed:`, sendResult.message);
+          }
+        } catch (smtpErr: any) {
+          errorMessage = smtpErr.message;
+          console.error(`[SMTP Outbound] Exception sending status email to ${requesterEmail}:`, smtpErr.message);
+        }
+      } else {
+        errorMessage = 'SMTP Host or requester email address not configured.';
+      }
+
+      // Record in PostgreSQL email_logs table
+      const db = getDbPool();
+      if (db) {
+        try {
+          const logId = `log-notif-${Date.now()}-${Math.random().toString(36).substr(2, 4)}`;
+          await db.query(
+            `INSERT INTO email_logs (
+              id, from_address, from_name, to_address, subject, body_preview, raw_body, received_at,
+              status, created_ticket_id, created_ticket_number, auto_reply_sent, auto_reply_subject, auto_reply_body, error_message
+            ) VALUES ($1, $2, $3, $4, $5, $6, $7, CURRENT_TIMESTAMP, $8, $9, $10, $11, $12, $13, $14)`,
+            [
+              logId,
+              senderFrom,
+              senderName,
+              requesterEmail,
+              subject,
+              body.substring(0, 150),
+              body,
+              delivered ? 'STATUS_NOTIFICATION_SENT' : 'STATUS_NOTIFICATION_FAILED',
+              ticketId || null,
+              ticketNumber,
+              delivered,
+              subject,
+              body,
+              errorMessage || null,
+            ]
+          );
+        } catch (dbErr: any) {
+          console.warn('Could not record notification in PostgreSQL email_logs:', dbErr.message);
+        }
+      }
+
+      res.json({
+        success: true,
+        delivered,
+        recipient: requesterEmail,
+        subject,
+        body,
+        message: delivered
+          ? `Status change email delivered to ${requesterEmail}`
+          : `Notification logged (${errorMessage || 'SMTP pending'})`,
+      });
+    } catch (err: any) {
+      console.error('Error in notify-status-change endpoint:', err);
+      res.status(500).json({ error: err.message });
+    }
+  });
+
   // POST: Trigger Manual/Immediate POP3 Sync & Auto-Ingestion
   app.post('/api/email/fetch-now', async (req, res) => {
     try {
@@ -918,6 +1108,7 @@ async function startServer() {
         date: new Date().toISOString(),
         textBody: body,
         htmlBody: '',
+        problemContent: extractProblemContent(body || ''),
         attachments: Array.isArray(attachments) ? attachments : [],
         rawHeaders: {},
       };
