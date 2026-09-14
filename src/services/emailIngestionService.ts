@@ -950,6 +950,43 @@ class EmailIngestionService {
   }
 
   /**
+   * Automatically sends / logs a ticket solved / closed email notification to the requester.
+   */
+  public sendTicketSolvedEmail(
+    ticket: Ticket,
+    requester: { fullName: string; email: string },
+    resolverName: string
+  ): InboundEmailLog {
+    const config = this.getConfig();
+    const subject = `[${ticket.ticketNumber}] Solved & Closed: ${ticket.title}`;
+    const body = `Hi ${requester.fullName},\n\nGood news! Your support ticket [${ticket.ticketNumber}] ("${ticket.title}") has been marked as **RESOLVED / CLOSED** by ${resolverName}.\n\nResolution Summary:\n• Ticket Number: [${ticket.ticketNumber}]\n• Status: ${ticket.status}\n• Resolution Notes: ${ticket.resolutionNotes || 'Issue resolved successfully by IT Support.'}\n\nIf you are still experiencing issues or need further assistance regarding this matter, please feel free to reply directly to this email or reopen the ticket in the IT Support Portal.\n\nThank you for using UOH Hospitality IT Support Desk.\n\nBest regards,\n${resolverName}\nIT Support Operations`;
+
+    const log: InboundEmailLog = {
+      id: `email-solved-${Date.now()}-${Math.random().toString(36).substr(2, 4)}`,
+      fromAddress: config.emailAddress || 'ticket.support@uohospitality.com.my',
+      fromName: 'UOH Hospitality Support Desk',
+      toAddress: requester.email || 'staff@uohospitality.com.my',
+      subject,
+      bodyPreview: body.substring(0, 120),
+      rawBody: body,
+      receivedAt: new Date().toISOString(),
+      status: 'PROCESSED',
+      createdTicketId: ticket.id,
+      createdTicketNumber: ticket.ticketNumber,
+      matchedUserId: ticket.createdById,
+      matchedBusinessUnitId: ticket.businessUnitId,
+      matchedDepartmentId: ticket.departmentId,
+      attachmentsCount: 0,
+      autoReplySent: true,
+      autoReplySubject: subject,
+      autoReplyBody: body,
+    };
+
+    this.addLog(log);
+    return log;
+  }
+
+  /**
    * Pulls sample emails and simulates mailbox sync
    */
   public async syncSampleMailbox(): Promise<{

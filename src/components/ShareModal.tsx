@@ -24,12 +24,9 @@ import {
   Info,
   HelpCircle,
 } from 'lucide-react';
-import { AppEnvironment } from '../types';
-
 interface ShareModalProps {
   isOpen: boolean;
   onClose: () => void;
-  currentEnvironment: AppEnvironment;
   onShowToast: (type: 'success' | 'info' | 'error', text: string) => void;
 }
 
@@ -44,11 +41,9 @@ interface NetworkInfo {
 export const ShareModal: React.FC<ShareModalProps> = ({
   isOpen,
   onClose,
-  currentEnvironment,
   onShowToast,
 }) => {
   const [activeTab, setActiveTab] = useState<'cloud' | 'localhost'>('cloud');
-  const [shareEnv, setShareEnv] = useState<AppEnvironment>(currentEnvironment);
   const [copiedField, setCopiedField] = useState<string | null>(null);
   const [networkInfo, setNetworkInfo] = useState<NetworkInfo | null>(null);
   const [isLoadingNet, setIsLoadingNet] = useState(false);
@@ -73,7 +68,7 @@ export const ShareModal: React.FC<ShareModalProps> = ({
 
   // Build the shareable cloud URL
   const currentOrigin = typeof window !== 'undefined' ? window.location.origin : '';
-  const shareableUrl = `${currentOrigin}/?env=${shareEnv.toLowerCase()}`;
+  const shareableUrl = currentOrigin;
 
   const copyToClipboard = (text: string, fieldName: string, label: string) => {
     navigator.clipboard.writeText(text);
@@ -174,31 +169,6 @@ export const ShareModal: React.FC<ShareModalProps> = ({
                   <label className="text-xs font-bold text-slate-800 dark:text-slate-200">
                     Live Web Link (Accessible by anyone, anywhere)
                   </label>
-                  <div className="flex items-center gap-1.5 text-xs">
-                    <span className="text-slate-500 dark:text-slate-400">Open in:</span>
-                    <button
-                      type="button"
-                      onClick={() => setShareEnv('UAT')}
-                      className={`px-2 py-0.5 rounded text-[11px] font-bold transition cursor-pointer ${
-                        shareEnv === 'UAT'
-                          ? 'bg-amber-600 text-white shadow-2xs'
-                          : 'bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-400 hover:bg-slate-200'
-                      }`}
-                    >
-                      🧪 UAT Sandbox
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => setShareEnv('PRODUCTION')}
-                      className={`px-2 py-0.5 rounded text-[11px] font-bold transition cursor-pointer ${
-                        shareEnv === 'PRODUCTION'
-                          ? 'bg-emerald-600 text-white shadow-2xs'
-                          : 'bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-400 hover:bg-slate-200'
-                      }`}
-                    >
-                      🟢 Production
-                    </button>
-                  </div>
                 </div>
 
                 {/* Link Box */}
@@ -361,7 +331,7 @@ export const ShareModal: React.FC<ShareModalProps> = ({
                         Detected Local Network Addresses:
                       </span>
                       {networkInfo.localIps.map((ip) => {
-                        const lanUrl = `http://${ip}:${networkInfo.port}/?env=${shareEnv.toLowerCase()}`;
+                        const lanUrl = `http://${ip}:${networkInfo.port}`;
                         return (
                           <div key={ip} className="flex items-center gap-2">
                             <div className="flex-1 bg-slate-50 dark:bg-slate-900 px-3 py-2 rounded-lg border border-slate-200 dark:border-slate-700 font-mono text-xs text-slate-800 dark:text-slate-200 truncate">
@@ -453,14 +423,8 @@ export const ShareModal: React.FC<ShareModalProps> = ({
         <div className="px-6 py-3.5 border-t border-slate-200 dark:border-slate-800 bg-slate-50/50 dark:bg-slate-800/40 flex items-center justify-between shrink-0">
           <div className="flex items-center gap-2 text-[11px] text-slate-500 dark:text-slate-400">
             <span>Current Scope:</span>
-            <span
-              className={`font-bold px-2 py-0.5 rounded text-[10px] ${
-                currentEnvironment === 'UAT'
-                  ? 'bg-amber-100 dark:bg-amber-950 text-amber-700 dark:text-amber-300'
-                  : 'bg-emerald-100 dark:bg-emerald-950 text-emerald-700 dark:text-emerald-300'
-              }`}
-            >
-              {currentEnvironment === 'UAT' ? '🧪 UAT Sandbox' : '🟢 Production'}
+            <span className="font-bold px-2 py-0.5 rounded text-[10px] bg-emerald-100 dark:bg-emerald-950 text-emerald-700 dark:text-emerald-300">
+              🟢 Production Live
             </span>
           </div>
 

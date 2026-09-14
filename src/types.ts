@@ -40,7 +40,7 @@ export type TimeframeOption = 'DAILY' | 'WEEKLY' | 'MONTHLY' | 'YEARLY';
 /**
  * Main application navigation view/page types.
  */
-export type AppView = 'DASHBOARD' | 'USERS' | 'BRANDING' | 'REPORTS' | 'GIT_GUIDE' | 'EMAIL_INTEGRATION';
+export type AppView = 'DASHBOARD' | 'USERS' | 'KNOWLEDGE_BASE' | 'BRANDING' | 'REPORTS' | 'GIT_GUIDE' | 'EMAIL_INTEGRATION';
 
 /**
  * Operational Environment Mode:
@@ -305,4 +305,19 @@ export interface MetricSummary {
   highTickets: number;
   resolutionRate: number; // Percentage 0 - 100
   avgResolutionHours: number;
+}
+
+/**
+ * Knowledge Base Article for IT Troubleshooting & Common Issue Resolutions
+ */
+export interface KnowledgeArticle {
+  id: string;
+  title: string;
+  category: string; // e.g., 'Network', 'Hardware', 'Software', 'Access'
+  businessUnitId: string; // 'ALL' or specific BusinessUnit ID
+  content: string; // Markdown or rich text
+  authorName: string;
+  views: number;
+  createdAt: string;
+  updatedAt: string;
 }

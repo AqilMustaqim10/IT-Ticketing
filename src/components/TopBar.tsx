@@ -14,11 +14,9 @@ import {
   ChevronDown,
   Database,
   RefreshCw,
-  FlaskConical,
-  ShieldCheck,
   Share2,
 } from 'lucide-react';
-import { User, BusinessUnit, DashboardFilterState, AppEnvironment } from '../types';
+import { User, BusinessUnit, DashboardFilterState } from '../types';
 import { getBUTheme } from '../utils/themeUtils';
 import { postgresBridge, DbStatus } from '../services/postgresBridgeService';
 import { storageService } from '../services/storageService';
@@ -27,12 +25,10 @@ interface TopBarProps {
   currentUser: User;
   businessUnits: BusinessUnit[];
   filters: DashboardFilterState;
-  currentEnvironment: AppEnvironment;
   onFilterChange: (filters: DashboardFilterState) => void;
   onOpenMobileSidebar: () => void;
   onOpenCreateTicket: () => void;
   onExportPDF: () => void;
-  onOpenEnvironmentModal: () => void;
   onOpenShareModal: () => void;
   onLogout?: () => void;
 }
@@ -41,12 +37,10 @@ export const TopBar: React.FC<TopBarProps> = ({
   currentUser,
   businessUnits,
   filters,
-  currentEnvironment,
   onFilterChange,
   onOpenMobileSidebar,
   onOpenCreateTicket,
   onExportPDF,
-  onOpenEnvironmentModal,
   onOpenShareModal,
 }) => {
   // Determine the active BU context (from filters for Admin, or currentUser's BU for staff)
@@ -158,33 +152,8 @@ export const TopBar: React.FC<TopBarProps> = ({
         )}
       </div>
 
-      {/* Right: Environment Switcher, Share, DB status & Actions */}
+      {/* Right: Share, DB status & Actions */}
       <div className="flex items-center space-x-2">
-        {/* Environment Pill / Switcher */}
-        <button
-          id="topbar-btn-environment"
-          type="button"
-          onClick={onOpenEnvironmentModal}
-          className={`flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-xs font-bold transition border shadow-2xs cursor-pointer ${
-            currentEnvironment === 'UAT'
-              ? 'bg-amber-50 dark:bg-amber-950/40 text-amber-700 dark:text-amber-300 border-amber-300 dark:border-amber-700 hover:bg-amber-100 dark:hover:bg-amber-900/40'
-              : 'bg-emerald-50 dark:bg-emerald-950/40 text-emerald-700 dark:text-emerald-300 border-emerald-300 dark:border-emerald-700 hover:bg-emerald-100 dark:hover:bg-emerald-900/40'
-          }`}
-          title={`Active Mode: ${currentEnvironment}. Click to switch between UAT Sandbox & Production`}
-        >
-          {currentEnvironment === 'UAT' ? (
-            <FlaskConical className="w-3.5 h-3.5 text-amber-600 dark:text-amber-400" />
-          ) : (
-            <ShieldCheck className="w-3.5 h-3.5 text-emerald-600 dark:text-emerald-400" />
-          )}
-          <span className="hidden xs:inline">
-            {currentEnvironment === 'UAT' ? 'UAT' : 'Prod'}
-          </span>
-          <span className="hidden sm:inline font-normal text-[10px] opacity-80">
-            {currentEnvironment === 'UAT' ? '(Sandbox)' : '(Live)'}
-          </span>
-        </button>
-
         {/* Share App CTA with friends */}
         <button
           id="topbar-btn-share"

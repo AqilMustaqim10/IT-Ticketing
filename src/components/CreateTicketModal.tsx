@@ -21,9 +21,10 @@ import {
   Sparkles,
   FileText,
 } from 'lucide-react';
-import { User, BusinessUnit, Department, TicketPriority, TicketAttachment } from '../types';
+import { User, BusinessUnit, Department, TicketPriority, TicketAttachment, KnowledgeArticle } from '../types';
 import { getBUTheme } from '../utils/themeUtils';
 import { BUBadge } from './BUBadge';
+import { storageService } from '../services/storageService';
 
 interface CreateTicketModalProps {
   currentUser: User;
@@ -55,6 +56,15 @@ export const CreateTicketModal: React.FC<CreateTicketModalProps> = ({
   const [isDragging, setIsDragging] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const fileInputRef = useRef<HTMLInputElement | null>(null);
+  const [selectedReadingArt, setSelectedReadingArt] = useState<KnowledgeArticle | null>(null);
+
+  const knowledgeArticles = storageService.getKnowledgeArticles(selectedBUId);
+  const matchingArticles = title.trim().length >= 2
+    ? knowledgeArticles.filter((a) => {
+        const q = title.toLowerCase();
+        return a.title.toLowerCase().includes(q) || a.category.toLowerCase().includes(q);
+      }).slice(0, 3)
+    : [];
 
   // Auto-detect reporting user's department and business unit
   const userDept = departments.find((d) => d.id === currentUser.departmentId);
@@ -336,6 +346,32 @@ export const CreateTicketModal: React.FC<CreateTicketModalProps> = ({
               placeholder="e.g. POS terminal 2 in main dining room not printing kitchen slips"
               className="w-full text-xs rounded-lg border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 p-2.5 text-slate-800 dark:text-slate-100 placeholder:text-slate-400 dark:placeholder:text-slate-500 focus:ring-2 focus:ring-blue-500 focus:outline-none"
             />
+            {matchingArticles.length > 0 && (
+              <div className="mt-2 p-2.5 bg-blue-50/80 dark:bg-blue-950/40 border border-blue-200 dark:border-blue-800 rounded-xl space-y-1.5 animate-in fade-in">
+                <div className="flex items-center gap-1.5 text-[11px] font-bold text-blue-800 dark:text-blue-300">
+                  <Sparkles className="w-3.5 h-3.5 text-blue-600 animate-pulse" />
+                  <span>Knowledge Base Recommendations (Self-Resolve):</span>
+                </div>
+                <div className="space-y-1">
+                  {matchingArticles.map((art) => (
+                    <div
+                      key={art.id}
+                      onClick={() => {
+                        storageService.incrementArticleViews(art.id);
+                        setSelectedReadingArt(art);
+                      }}
+                      className="p-2 bg-white dark:bg-slate-900 rounded-lg border border-blue-200 dark:border-blue-800 hover:border-blue-400 cursor-pointer text-xs flex items-center justify-between transition shadow-2xs group"
+                    >
+                      <div className="flex items-center gap-2 truncate">
+                        <span className="font-bold text-slate-900 dark:text-slate-100 truncate group-hover:text-blue-600">{art.title}</span>
+                        <span className="text-[10px] bg-blue-50 dark:bg-blue-950 text-blue-700 dark:text-blue-300 px-1.5 py-0.5 rounded font-semibold shrink-0">{art.category}</span>
+                      </div>
+                      <span className="text-[11px] text-blue-600 dark:text-blue-400 font-bold shrink-0 ml-2 group-hover:underline">Read &rarr;</span>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
           </div>
 
           {/* Description */}
@@ -549,6 +585,40 @@ export const CreateTicketModal: React.FC<CreateTicketModalProps> = ({
           </div>
         </form>
       </div>
+
+      {selectedReadingArt && (
+        <div className="fixed inset-0 z-60 bg-slate-950/60 backdrop-blur-xs flex items-center justify-center p-4">
+          <div className="bg-white dark:bg-slate-900 rounded-2xl border border-slate-200 dark:border-slate-800 shadow-2xl w-full max-w-xl p-6 space-y-4 max-h-[85vh] overflow-y-auto">
+            <div className="flex items-center justify-between pb-3 border-b border-slate-200 dark:border-slate-800">
+              <div className="flex items-center gap-2">
+                <span className="px-2 py-0.5 rounded text-[10px] font-bold bg-blue-100 dark:bg-blue-950 text-blue-700 dark:text-blue-300">
+                  {selectedReadingArt.category}
+                </span>
+                <h3 className="text-sm font-bold text-slate-900 dark:text-slate-100">{selectedReadingArt.title}</h3>
+              </div>
+              <button
+                onClick={() => setSelectedReadingArt(null)}
+                className="p-1 rounded-lg text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 cursor-pointer"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+            <div className="text-xs sm:text-sm text-slate-700 dark:text-slate-300 whitespace-pre-line leading-relaxed">
+              {selectedReadingArt.content}
+            </div>
+            <div className="pt-4 border-t border-slate-100 dark:border-slate-800 flex items-center justify-between text-xs text-slate-400">
+              <span>Author: {selectedReadingArt.authorName}</span>
+              <button
+                type="button"
+                onClick={() => setSelectedReadingArt(null)}
+                className="px-4 py-1.5 bg-blue-600 hover:bg-blue-700 text-white rounded-lg text-xs font-bold cursor-pointer"
+              >
+                Got It, Close Guide
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 };

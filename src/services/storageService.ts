@@ -20,6 +20,7 @@ import {
   BusinessUnitBranding,
   EmailSettings,
   AppEnvironment,
+  KnowledgeArticle,
 } from '../types';
 import {
   SEED_BUSINESS_UNITS,
@@ -65,7 +66,55 @@ const STORAGE_KEYS = {
   get TICKETS() { return `it_ticketing_tickets_${getEnvSuffix()}`; },
   get CURRENT_USER() { return `it_ticketing_current_user_${getEnvSuffix()}`; },
   get EMAIL_SETTINGS() { return `it_ticketing_email_settings_${getEnvSuffix()}`; },
+  get KNOWLEDGE_BASE() { return `it_ticketing_knowledge_base_${getEnvSuffix()}`; },
 };
+
+const SEED_KNOWLEDGE_ARTICLES: KnowledgeArticle[] = [
+  {
+    id: 'kb-1',
+    title: 'How to Connect to Corporate Wi-Fi (UOA-Secure)',
+    category: 'Network',
+    businessUnitId: 'ALL',
+    content: 'To connect to **UOA-Secure** corporate wireless network:\n1. Select `UOA-Secure` from your Wi-Fi network list.\n2. Enter your corporate email ID and network password.\n3. Accept the security certificate prompt when prompted.\n4. If authentication fails, please clear your saved credentials and try re-entering your password, or contact IT Support.',
+    authorName: 'System Administrator',
+    views: 142,
+    createdAt: new Date(Date.now() - 86400000 * 5).toISOString(),
+    updatedAt: new Date(Date.now() - 86400000 * 5).toISOString(),
+  },
+  {
+    id: 'kb-2',
+    title: 'Biometric Card Reader Door Access Troubleshooting',
+    category: 'Hardware',
+    businessUnitId: 'bu-klbs',
+    content: 'If your access card flashes red at turnstiles or laboratory doors:\n- Ensure your card is not placed directly next to metal keys or smartphones.\n- Tap the card firmly against the center of the RFID reader module for at least 1.5 seconds.\n- If the LED remains solid red, your card access permissions may need re-synchronization by facility security or IT.',
+    authorName: 'Kevin Tan',
+    views: 89,
+    createdAt: new Date(Date.now() - 86400000 * 4).toISOString(),
+    updatedAt: new Date(Date.now() - 86400000 * 4).toISOString(),
+  },
+  {
+    id: 'kb-3',
+    title: 'VPN Connection & Multi-Factor Authentication (MFA)',
+    category: 'Software',
+    businessUnitId: 'ALL',
+    content: 'Remote access requires the corporate SecureClient VPN client:\n1. Launch SecureClient and connect to `vpn.uohospitality.com.my`.\n2. Enter your Windows login credentials.\n3. Approve the push notification or enter the 6-digit TOTP code from your authenticator app.\n4. Ensure you are connected before accessing internal intranet resources or shared drives.',
+    authorName: 'IT Operations Team',
+    views: 215,
+    createdAt: new Date(Date.now() - 86400000 * 7).toISOString(),
+    updatedAt: new Date(Date.now() - 86400000 * 2).toISOString(),
+  },
+  {
+    id: 'kb-4',
+    title: 'Network Printer Setup & Toner Replacement',
+    category: 'Hardware',
+    businessUnitId: 'bu-ccec',
+    content: 'To install a network printer on your workstation:\n1. Open Printers & Scanners settings and click **Add Device**.\n2. Search for the printer hostname (e.g., `PRN-CCEC-L8-01`).\n3. If driver installation prompts, select Windows automatic network driver lookup.\n4. For low toner or paper jams, log a ticket immediately with the exact printer error code displayed on the LCD panel.',
+    authorName: 'Support Helpdesk',
+    views: 64,
+    createdAt: new Date(Date.now() - 86400000 * 6).toISOString(),
+    updatedAt: new Date(Date.now() - 86400000 * 6).toISOString(),
+  },
+];
 
 export const DEFAULT_USER_PASSWORD = 'password123';
 
@@ -1320,6 +1369,134 @@ class StorageService {
     if (this.emailPollingTimer) {
       clearInterval(this.emailPollingTimer);
       this.emailPollingTimer = null;
+    }
+  }
+
+  // =========================================================================
+  // Knowledge Base Articles Management
+  // =========================================================================
+  public getKnowledgeArticles(businessUnitId?: string): KnowledgeArticle[] {
+    const raw = localStorage.getItem(STORAGE_KEYS.KNOWLEDGE_BASE);
+    const articles: KnowledgeArticle[] = raw ? JSON.parse(raw) : SEED_KNOWLEDGE_ARTICLES;
+    if (businessUnitId && businessUnitId !== 'ALL') {
+      return articles.filter((a) => a.businessUnitId === 'ALL' || a.businessUnitId === businessUnitId);
+    }
+    return articles;
+  }
+
+  public addKnowledgeArticle(
+    currentUser: User,
+    articleData: {
+      title: string;
+      category: string;
+      businessUnitId: string;
+      content: string;
+    }
+  ): { success: boolean; error?: string; article?: KnowledgeArticle } {
+    if (currentUser.role === 'USER') {
+      return { success: false, error: 'Unauthorized: Staff users cannot publish knowledge base articles.' };
+    }
+
+    const title = articleData.title.trim();
+    const category = articleData.category.trim();
+    const content = articleData.content.trim();
+    const businessUnitId = articleData.businessUnitId || 'ALL';
+
+    if (!title || !category || !content) {
+      return { success: false, error: 'Title, category, and article content are required.' };
+    }
+
+    const allArticles = this.getKnowledgeArticles();
+    const newArticle: KnowledgeArticle = {
+      id: `kb_${Date.now()}_${Math.random().toString(36).substr(2, 5)}`,
+      title,
+      category,
+      businessUnitId,
+      content,
+      authorName: currentUser.fullName,
+      views: 0,
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString(),
+    };
+
+    allArticles.unshift(newArticle);
+    localStorage.setItem(STORAGE_KEYS.KNOWLEDGE_BASE, JSON.stringify(allArticles));
+
+    return { success: true, article: newArticle };
+  }
+
+  public updateKnowledgeArticle(
+    currentUser: User,
+    articleId: string,
+    updates: {
+      title?: string;
+      category?: string;
+      businessUnitId?: string;
+      content?: string;
+    }
+  ): { success: boolean; error?: string; article?: KnowledgeArticle } {
+    if (currentUser.role === 'USER') {
+      return { success: false, error: 'Unauthorized: Staff users cannot edit knowledge base articles.' };
+    }
+
+    const allArticles = this.getKnowledgeArticles();
+    const index = allArticles.findIndex((a) => a.id === articleId);
+
+    if (index === -1) {
+      return { success: false, error: 'Knowledge article not found.' };
+    }
+
+    const target = allArticles[index];
+    if (currentUser.role === 'IT' && target.businessUnitId !== 'ALL' && target.businessUnitId !== currentUser.businessUnitId) {
+      return { success: false, error: 'Forbidden: IT Support can only edit articles for their assigned Business Unit.' };
+    }
+
+    const updated: KnowledgeArticle = {
+      ...target,
+      title: updates.title !== undefined ? updates.title.trim() : target.title,
+      category: updates.category !== undefined ? updates.category.trim() : target.category,
+      businessUnitId: updates.businessUnitId !== undefined ? updates.businessUnitId : target.businessUnitId,
+      content: updates.content !== undefined ? updates.content.trim() : target.content,
+      updatedAt: new Date().toISOString(),
+    };
+
+    allArticles[index] = updated;
+    localStorage.setItem(STORAGE_KEYS.KNOWLEDGE_BASE, JSON.stringify(allArticles));
+
+    return { success: true, article: updated };
+  }
+
+  public deleteKnowledgeArticle(
+    currentUser: User,
+    articleId: string
+  ): { success: boolean; error?: string } {
+    if (currentUser.role === 'USER') {
+      return { success: false, error: 'Unauthorized: Staff users cannot delete knowledge base articles.' };
+    }
+
+    const allArticles = this.getKnowledgeArticles();
+    const target = allArticles.find((a) => a.id === articleId);
+
+    if (!target) {
+      return { success: false, error: 'Knowledge article not found.' };
+    }
+
+    if (currentUser.role === 'IT' && target.businessUnitId !== 'ALL' && target.businessUnitId !== currentUser.businessUnitId) {
+      return { success: false, error: 'Forbidden: IT Support cannot delete articles from other Business Units.' };
+    }
+
+    const filtered = allArticles.filter((a) => a.id !== articleId);
+    localStorage.setItem(STORAGE_KEYS.KNOWLEDGE_BASE, JSON.stringify(filtered));
+
+    return { success: true };
+  }
+
+  public incrementArticleViews(articleId: string): void {
+    const allArticles = this.getKnowledgeArticles();
+    const index = allArticles.findIndex((a) => a.id === articleId);
+    if (index !== -1) {
+      allArticles[index].views = (allArticles[index].views || 0) + 1;
+      localStorage.setItem(STORAGE_KEYS.KNOWLEDGE_BASE, JSON.stringify(allArticles));
     }
   }
 }
