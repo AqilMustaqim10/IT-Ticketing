@@ -1,5 +1,20 @@
 services:
-  # 2. IT Ticketing Web App (Node + Express + React Vite)
+  postgres:
+    image: postgres:15-alpine
+    container_name: uoa_helpdesk_db
+    restart: always
+    environment:
+      POSTGRES_USER: ${DB_USER:-postgres}
+      POSTGRES_PASSWORD: ${DB_PASSWORD:-password123}
+      POSTGRES_DB: ${DB_NAME:-uoa_helpdesk_db}
+    ports:
+      - "5432:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+      - ./init.sql:/docker-entrypoint-initdb.d/init.sql
+    networks:
+      - helpdesk-net
+
   helpdesk-app:
     build:
       context: .
@@ -10,12 +25,17 @@ services:
       - "3000:3000"
     environment:
       NODE_ENV: production
-      DATABASE_URL: ${DATABASE_URL}
+      DATABASE_URL: postgresql://${DB_USER:-postgres}:${DB_PASSWORD:-password123}@postgres:5432/${DB_NAME:-uoa_helpdesk_db}
       GEMINI_API_KEY: ${GEMINI_API_KEY}
     env_file:
       - .env
+    depends_on:
+      - postgres
     networks:
       - helpdesk-net
+
+volumes:
+  pgdata:
 
 networks:
   helpdesk-net:
