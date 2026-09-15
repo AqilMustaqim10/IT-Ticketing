@@ -26,7 +26,10 @@ const { Pool } = pg;
 let pool: pg.Pool | null = null;
 
 function getDbPool(): pg.Pool | null {
-  const connectionString = process.env.DATABASE_URL || 'postgresql://postgres:password123@localhost:5432/uoa_helpdesk_db';
+  const connectionString = process.env.DATABASE_URL;
+  if (!connectionString || connectionString.trim() === '') {
+    return null;
+  }
   if (!pool) {
     pool = new Pool({
       connectionString,

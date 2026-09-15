@@ -54,7 +54,8 @@ export default function App() {
   // =========================================================================
   const [currentUser, setCurrentUser] = useState<User | null>(() => {
     storageService.initialize();
-    return storageService.getCurrentUser();
+    storageService.setCurrentUser(null);
+    return null;
   });
 
   const [currentView, setCurrentView] = useState<AppView>('DASHBOARD');
