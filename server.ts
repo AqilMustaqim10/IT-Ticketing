@@ -296,8 +296,9 @@ async function startServer() {
       }
 
       const user = rows[0];
-      if (user.password_hash !== cleanPassword && user.password_hash !== 'password123' && cleanPassword !== 'password123') {
-        return res.status(401).json({ success: false, error: 'Incorrect password. Default for new accounts is "password123".' });
+      const actualHash = user.password_hash || 'password123';
+      if (actualHash !== cleanPassword) {
+        return res.status(401).json({ success: false, error: 'Incorrect password. Default password is "password123".' });
       }
 
       delete user.password_hash;

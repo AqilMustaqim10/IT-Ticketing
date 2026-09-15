@@ -132,6 +132,7 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({
                     <Lock className="w-3.5 h-3.5 text-blue-600" />
                     <span>Password</span>
                   </span>
+                  <span className="text-[10px] text-slate-400 font-normal">Default: password123</span>
                 </label>
                 <input
                   id="login-input-password"

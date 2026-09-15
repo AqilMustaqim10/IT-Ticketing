@@ -395,8 +395,8 @@ class StorageService {
     }
 
     const storedPassword = user.password || DEFAULT_USER_PASSWORD;
-    if (storedPassword !== password.trim() && storedPassword !== 'password123' && password.trim() !== 'password123') {
-      return { success: false, error: 'Invalid password. Please verify your credentials.' };
+    if (storedPassword !== password.trim()) {
+      return { success: false, error: 'Invalid password. Default password is "password123".' };
     }
 
     this.setCurrentUser(user);
