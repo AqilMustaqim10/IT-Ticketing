@@ -210,9 +210,6 @@ class StorageService {
       const initialTickets = currentEnv === 'UAT' ? this.getUatInitialTickets() : SEED_TICKETS;
       localStorage.setItem(STORAGE_KEYS.TICKETS, JSON.stringify(initialTickets));
     }
-    if (!localStorage.getItem(STORAGE_KEYS.CURRENT_USER)) {
-      localStorage.setItem(STORAGE_KEYS.CURRENT_USER, JSON.stringify(SEED_USERS[0]));
-    }
   }
 
   // ==========================================
@@ -356,7 +353,7 @@ class StorageService {
     localStorage.setItem(STORAGE_KEYS.DEPARTMENTS, JSON.stringify(SEED_DEPARTMENTS));
     localStorage.setItem(STORAGE_KEYS.USERS, JSON.stringify(SEED_USERS));
     localStorage.setItem(STORAGE_KEYS.TICKETS, JSON.stringify(SEED_TICKETS));
-    localStorage.setItem(STORAGE_KEYS.CURRENT_USER, JSON.stringify(SEED_USERS[0]));
+    localStorage.removeItem(STORAGE_KEYS.CURRENT_USER);
   }
 
   // ==========================================
