@@ -341,9 +341,9 @@ export function generateServerAutoReply(
   },
   isReply: boolean = false
 ): { subject: string; body: string } {
-  const defaultSubject = '[{ticketNumber}] Received: {ticketTitle}';
+  const defaultSubject = '[{ticketNumber}] Ticket Created: {ticketTitle}';
   const defaultBody =
-    'Hi {requesterName},\n\nThank you for reaching out to IT Support. Your request has been successfully received and a ticket has been created with Ticket Number: [{ticketNumber}].\n\nTicket Summary:\n• Ticket Number: [{ticketNumber}]\n• Subject: {ticketTitle}\n• Business Unit: {businessUnitName} ({businessUnitCode})\n• Department: {departmentName}\n• Priority: {priority}\n• Current Status: {status}\n\nOur IT Support team has been notified and is reviewing your issue. A specialist will attend to your request shortly.\n\nBest regards,\nIT Support Desk';
+    'Dear {requesterName},\n\nYour inbound email has been successfully verified and converted into an official IT support ticket.\n\n--------------------------------------------------\nTICKET CONFIRMATION & DETAILS\n--------------------------------------------------\n• Ticket Number: [{ticketNumber}]\n• Subject: {ticketTitle}\n• Business Unit: {businessUnitName} ({businessUnitCode})\n• Department: {departmentName}\n• Urgency / Priority: {priority}\n• Status: {status}\n• Submitted At: {createdAt}\n\nOur IT Support team has been notified and a specialist is reviewing your case. You can reply directly to this email to add updates or attach files to your ticket.\n\nThank you,\nIT Support Desk\nUOA Hospitality Operations';
 
   const defaultReplyBody =
     'Hi {requesterName},\n\nWe have received your update for ticket [{ticketNumber}]: "{ticketTitle}".\n\nYour message has been appended to the active support case history and our assigned IT specialist has been notified.\n\nBest regards,\nIT Support Desk';
@@ -440,6 +440,8 @@ export async function ingestEmailReport(
         const senderFrom = config.emailAddress || 'support@uohospitality.com.my';
         const senderName = config.senderDisplayName || 'IT Support Desk';
 
+        const securityRefId = `SEC-REJ-${Date.now().toString().slice(-6)}`;
+
         if (smtpHost && cleanFrom) {
           try {
             await sendSmtpEmail({
@@ -451,8 +453,8 @@ export async function ingestEmailReport(
               from: senderFrom,
               fromName: senderName,
               to: cleanFrom,
-              subject: `[Rejected] Ticket Creation Failed - Unregistered Email Address`,
-              body: `Hello,\n\nYour inbound email regarding "${cleanSubject}" could not be processed into a helpdesk support ticket.\n\nReason: Your email address (${cleanFrom}) is not registered in the IT Helpdesk system.\n\nTo submit support tickets via email, please register your account on the IT Helpdesk portal or contact your Business Unit IT administrator for assistance.\n\nThank you,\nIT Support Desk`,
+              subject: `[${securityRefId}] Ticket Creation Rejected - Unregistered Email Address`,
+              body: `Hello,\n\nYour inbound email regarding "${cleanSubject}" could not be processed into an IT support ticket.\n\n[Security Notice]\n- Reference ID: ${securityRefId}\n- Status: REJECTED (Unregistered Sender)\n- Sender Email: ${cleanFrom}\n- Timestamp: ${new Date().toISOString()}\n\nReason:\nYour email address is not registered in the IT Helpdesk system. For security and compliance reasons, all support requests must originate from registered employee accounts.\n\nAction Required:\nTo submit support tickets via email, please register your account on the IT Helpdesk portal or contact your Business Unit IT administrator for assistance.\n\nThank you,\nIT Helpdesk Security Team`,
               timeoutMs: 15000,
             });
             bounceSent = true;
@@ -480,8 +482,8 @@ export async function ingestEmailReport(
           matchedDepartmentId: matchedDeptId,
           attachmentsCount: email.attachments.length,
           autoReplySent: bounceSent,
-          autoReplySubject: `[Rejected] Ticket Creation Failed - Unregistered Email Address`,
-          autoReplyBody: 'Unregistered sender bounce-back notice.',
+          autoReplySubject: `[${securityRefId}] Ticket Creation Rejected - Unregistered Email Address`,
+          autoReplyBody: `Security rejection notice [${securityRefId}] sent to unregistered sender.`,
           errorMessage: 'Sender email is not registered in the system.',
         };
 
