@@ -511,6 +511,14 @@ export async function ingestEmailReport(
           ]
         );
 
+        if (email.messageId) {
+          await client.query(
+            `INSERT INTO processed_email_messages (message_id, ticket_id) VALUES ($1, $2) ON CONFLICT (message_id) DO NOTHING`,
+            [email.messageId, 'rejected']
+          );
+          memoryProcessedMessageIds.add(email.messageId);
+        }
+
         await client.query('COMMIT');
 
         return {
