@@ -416,7 +416,7 @@ export async function ingestEmailReport(
     try {
       await client.query('BEGIN');
 
-      // 1. Resolve or Create User
+      // 1. Resolve User (Strict check: Unregistered senders are rejected and bounced back)
       const userRes = await client.query(
         'SELECT id, username, full_name, email, business_unit_id, department_id FROM users WHERE LOWER(email) = $1 LIMIT 1',
         [cleanFrom]
@@ -429,31 +429,95 @@ export async function ingestEmailReport(
         matchedBUId = targetUser.business_unit_id || matchedBUId;
         matchedDeptId = targetUser.department_id || matchedDeptId;
       } else {
-        // Auto-create user from inbound email
-        const generatedUsername = cleanFrom.split('@')[0].replace(/[^a-zA-Z0-9._-]/g, '');
-        const displayName = email.fromName || cleanFrom.split('@')[0].replace(/[._-]/g, ' ').replace(/\b\w/g, (c) => c.toUpperCase());
-        const newUserId = `user-email-${Date.now()}-${Math.random().toString(36).substr(2, 4)}`;
+        // Unregistered sender detected - Reject ticket creation and send bounce-back email
+        console.warn(`[Email Security] Rejected inbound email from unregistered sender: ${cleanFrom}`);
 
-        // Match BU based on email domain or keywords
-        if (cleanFrom.includes('hotel')) matchedBUId = 'bu-hotel';
-        else if (cleanFrom.includes('fnb') || cleanFrom.includes('botanica')) matchedBUId = 'bu-fnb';
-        else if (cleanFrom.includes('klbs')) matchedBUId = 'bu-klbs';
-        else if (cleanFrom.includes('klw')) matchedBUId = 'bu-klw';
-        else if (cleanFrom.includes('uoa')) matchedBUId = 'bu-uoahq';
+        let bounceSent = false;
+        const smtpHost = config.smtpHost || config.host;
+        const smtpPort = config.smtpPort || (config.smtpUseSsl ? 465 : 587);
+        const smtpUser = config.smtpUsername || config.username || config.emailAddress;
+        const smtpPass = config.smtpPassword || config.appPassword || '';
+        const senderFrom = config.emailAddress || 'support@uohospitality.com.my';
+        const senderName = config.senderDisplayName || 'IT Support Desk';
 
-        // Get default department for BU
-        const deptRes = await client.query('SELECT id, name FROM departments WHERE business_unit_id = $1 LIMIT 1', [matchedBUId]);
-        matchedDeptId = deptRes.rows[0]?.id || 'dept-ccec-ops';
-        const deptName = deptRes.rows[0]?.name || 'General Operations';
+        if (smtpHost && cleanFrom) {
+          try {
+            await sendSmtpEmail({
+              host: smtpHost,
+              port: smtpPort,
+              useSsl: config.smtpUseSsl !== undefined ? config.smtpUseSsl : (smtpPort === 465),
+              username: smtpUser,
+              password: smtpPass,
+              from: senderFrom,
+              fromName: senderName,
+              to: cleanFrom,
+              subject: `[Rejected] Ticket Creation Failed - Unregistered Email Address`,
+              body: `Hello,\n\nYour inbound email regarding "${cleanSubject}" could not be processed into a helpdesk support ticket.\n\nReason: Your email address (${cleanFrom}) is not registered in the IT Helpdesk system.\n\nTo submit support tickets via email, please register your account on the IT Helpdesk portal or contact your Business Unit IT administrator for assistance.\n\nThank you,\nIT Support Desk`,
+              timeoutMs: 15000,
+            });
+            bounceSent = true;
+          } catch (bounceErr: any) {
+            console.error('Failed to send rejection bounce-back email:', bounceErr.message);
+          }
+        }
+
+        // Insert audit log for rejected unregistered sender
+        const rejectedLog = {
+          id: logId,
+          messageId: email.messageId,
+          fromAddress: cleanFrom,
+          fromName: email.fromName || cleanFrom,
+          toAddress: email.to || config.emailAddress,
+          subject: cleanSubject,
+          bodyPreview: cleanBody.substring(0, 150),
+          rawBody: cleanBody,
+          receivedAt: new Date().toISOString(),
+          status: 'REJECTED_UNREGISTERED_SENDER',
+          createdTicketId: '',
+          createdTicketNumber: '',
+          matchedUserId: null,
+          matchedBusinessUnitId: matchedBUId,
+          matchedDepartmentId: matchedDeptId,
+          attachmentsCount: email.attachments.length,
+          autoReplySent: bounceSent,
+          autoReplySubject: `[Rejected] Ticket Creation Failed - Unregistered Email Address`,
+          autoReplyBody: 'Unregistered sender bounce-back notice.',
+          errorMessage: 'Sender email is not registered in the system.',
+        };
 
         await client.query(
-          `INSERT INTO users (id, username, password_hash, full_name, email, role, business_unit_id, department_id, department, must_change_password)
-           VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
-           ON CONFLICT (email) DO NOTHING`,
-          [newUserId, generatedUsername, 'password123', displayName, cleanFrom, 'USER', matchedBUId, matchedDeptId, deptName, true]
+          `INSERT INTO email_logs (id, message_id, from_address, from_name, to_address, subject, body_preview, raw_body, received_at, status, created_ticket_id, created_ticket_number, matched_user_id, matched_business_unit_id, matched_department_id, attachments_count, auto_reply_sent, auto_reply_subject, auto_reply_body, error_message)
+           VALUES ($1, $2, $3, $4, $5, $6, $7, $8, CURRENT_TIMESTAMP, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19)`,
+          [
+            rejectedLog.id,
+            rejectedLog.messageId,
+            rejectedLog.fromAddress,
+            rejectedLog.fromName,
+            rejectedLog.toAddress,
+            rejectedLog.subject,
+            rejectedLog.bodyPreview,
+            rejectedLog.rawBody,
+            rejectedLog.status,
+            rejectedLog.createdTicketId,
+            rejectedLog.createdTicketNumber,
+            null,
+            rejectedLog.matchedBusinessUnitId,
+            rejectedLog.matchedDepartmentId,
+            rejectedLog.attachmentsCount,
+            rejectedLog.autoReplySent,
+            rejectedLog.autoReplySubject,
+            rejectedLog.autoReplyBody,
+            rejectedLog.errorMessage,
+          ]
         );
 
-        matchedUserId = newUserId;
+        await client.query('COMMIT');
+
+        return {
+          success: false,
+          message: `Email rejected: Sender ${cleanFrom} is not registered in the system. Bounce-back email sent.`,
+          log: rejectedLog,
+        };
       }
 
       // Map any email attachments
