@@ -7,6 +7,7 @@
  */
 
 import pg from 'pg';
+import { GoogleGenAI } from "@google/genai";
 import { ParsedEmail, ParsedEmailAttachment, extractProblemContent } from './emailParser';
 import { fetchPop3Emails, testPop3Mailbox, Pop3Options } from './pop3Client';
 import { sendSmtpEmail } from './smtpClient';
@@ -269,6 +270,43 @@ export function detectPriority(subject: string, body: string): 'LOW' | 'MEDIUM' 
 }
 
 /**
+ * AI-powered priority detection using Gemini with automatic fallback to rule-based heuristic
+ */
+export async function detectPriorityAI(subject: string, body: string): Promise<'LOW' | 'MEDIUM' | 'HIGH' | 'URGENT'> {
+  try {
+    const apiKey = process.env.GEMINI_API_KEY;
+    if (!apiKey) {
+      return detectPriority(subject, body);
+    }
+
+    const ai = new GoogleGenAI({ apiKey });
+    const response = await ai.models.generateContent({
+      model: 'gemini-3.8-flash',
+      contents: `Analyze the following support email and classify its urgency strictly into one of these four levels: URGENT, HIGH, MEDIUM, LOW.
+Guidelines:
+- URGENT: Critical outages, hotel-wide system down, PMS down, emergency, severe operational halt.
+- HIGH: POS offline, guest waiting queues, departmental blockers, production disruption.
+- MEDIUM: Standard IT support, printer issues, Wi-Fi, password reset, general requests.
+- LOW: Minor cosmetic issues, general inquiry, suggestion, no rush.
+
+Email Subject: ${subject}
+Email Body: ${body}
+
+Return ONLY the priority level name (URGENT, HIGH, MEDIUM, or LOW) with no extra text.`,
+    });
+
+    const text = (response.text || '').trim().toUpperCase();
+    if (['URGENT', 'HIGH', 'MEDIUM', 'LOW'].includes(text)) {
+      return text as 'LOW' | 'MEDIUM' | 'HIGH' | 'URGENT';
+    }
+  } catch (err: any) {
+    console.warn('Gemini priority detection failed, falling back to rule-based heuristic:', err.message);
+  }
+
+  return detectPriority(subject, body);
+}
+
+/**
  * Detects appropriate category
  */
 export function detectCategory(subject: string, body: string): string {
@@ -496,7 +534,7 @@ export async function ingestEmailReport(
         createdTicketNumber = `TCK-${count}`;
         createdTicketId = `ticket-${Date.now()}-${Math.random().toString(36).substr(2, 5)}`;
 
-        const priority = config.autoExtractPriority ? detectPriority(cleanSubject, cleanBody) : 'MEDIUM';
+        const priority = config.autoExtractPriority ? await detectPriorityAI(cleanSubject, cleanBody) : 'MEDIUM';
         const category = config.autoAssignCategory ? detectCategory(cleanSubject, cleanBody) : 'Email Inbound Report';
         const sanitizedTitle = cleanSubject.replace(/^(fwd|fw|re):\s*/i, '').trim() || 'Inbound Email Support Request';
 
@@ -596,7 +634,7 @@ export async function ingestEmailReport(
           businessUnitName: buName,
           businessUnitCode: buCode,
           departmentName: deptNameForAck,
-          priority: isReply ? 'MEDIUM' : (config.autoExtractPriority ? detectPriority(cleanSubject, cleanBody) : 'MEDIUM'),
+          priority: isReply ? 'MEDIUM' : (config.autoExtractPriority ? await detectPriorityAI(cleanSubject, cleanBody) : 'MEDIUM'),
           status: 'OPEN',
         },
         isReply
