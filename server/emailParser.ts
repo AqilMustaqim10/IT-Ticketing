@@ -309,30 +309,38 @@ function parseMimeBody(
         const partDisposition = partHeaders['content-disposition'] || '';
 
         // Check if attachment
+        const contentId = partHeaders['content-id'] || '';
+        const isInline = partDisposition.toLowerCase().includes('inline') || !!contentId;
         const isAttachment =
-          partDisposition.toLowerCase().includes('attachment') ||
-          partContentType.toLowerCase().includes('name=') ||
-          partDisposition.toLowerCase().includes('filename=');
+          (partDisposition.toLowerCase().includes('attachment') ||
+           partContentType.toLowerCase().includes('name=') ||
+           partContentType.toLowerCase().includes('filename=')) && !isInline;
 
-        if (isAttachment) {
-          let filename = 'attachment';
-          const fnMatch =
-            partDisposition.match(/filename=(?:"([^"]+)"|([^;\s]+))/i) ||
-            partContentType.match(/name=(?:"([^"]+)"|([^;\s]+))/i);
-          if (fnMatch) {
-            filename = decodeRfc2047(fnMatch[1] || fnMatch[2]);
-          }
+        let filename = 'attachment';
+        const fnMatch =
+          partDisposition.match(/filename=(?:"([^"]+)"|([^;\s]+))/i) ||
+          partContentType.match(/name=(?:"([^"]+)"|([^;\s]+))/i);
+        if (fnMatch) {
+          filename = decodeRfc2047(fnMatch[1] || fnMatch[2]);
+        }
 
-          const cleanType = partContentType.split(';')[0].trim().toLowerCase();
-          let base64Data = '';
+        // Filter out footer/signature signature artifact images (e.g. image001.png, logo.png, icon.png under 30KB)
+        const cleanType = partContentType.split(';')[0].trim().toLowerCase();
+        let base64Data = '';
 
-          if (partTransferEncoding.toLowerCase().includes('base64')) {
-            base64Data = partBodyStr.replace(/\s+/g, '');
-          } else {
-            base64Data = Buffer.from(partBodyStr).toString('base64');
-          }
+        if (partTransferEncoding.toLowerCase().includes('base64')) {
+          base64Data = partBodyStr.replace(/\s+/s, '');
+        } else {
+          base64Data = Buffer.from(partBodyStr).toString('base64');
+        }
 
-          const rawBytes = Buffer.from(base64Data, 'base64');
+        const rawBytes = Buffer.from(base64Data, 'base64');
+
+        const isSignatureLogo =
+          (isInline || /^(image\d{3}\.(png|jpg|gif|jpeg)|logo[._-]|^icon[._-])/i.test(filename)) &&
+          rawBytes.length < 30 * 1024;
+
+        if (isAttachment && !isSignatureLogo) {
           result.attachments.push({
             name: filename,
             size: rawBytes.length,
