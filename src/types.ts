@@ -97,6 +97,8 @@ export interface EmailSettings {
   enableAutoReply?: boolean;
   autoReplySubjectTemplate?: string;
   autoReplyBodyTemplate?: string;
+  rejectionSubjectTemplate?: string;
+  rejectionBodyTemplate?: string;
   enableStatusChangeEmails?: boolean;
   statusInProgressTemplate?: string;
   statusResolvedTemplate?: string;

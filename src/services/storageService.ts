@@ -153,7 +153,15 @@ class StorageService {
         localStorage.setItem(STORAGE_KEYS.DEPARTMENTS, JSON.stringify(data.departments));
       }
       if (data.users && data.users.length > 0) {
-        localStorage.setItem(STORAGE_KEYS.USERS, JSON.stringify(data.users));
+        const existingUsers = this.getAllUsers();
+        const mergedUsers = data.users.map((serverUser: User) => {
+          const local = existingUsers.find(u => u.id === serverUser.id);
+          if (local && (!serverUser.password || serverUser.password === 'password123') && local.password && local.password !== 'password123') {
+            return { ...serverUser, password: local.password };
+          }
+          return serverUser;
+        });
+        localStorage.setItem(STORAGE_KEYS.USERS, JSON.stringify(mergedUsers));
       }
       if (data.tickets !== undefined) {
         localStorage.setItem(STORAGE_KEYS.TICKETS, JSON.stringify(data.tickets));

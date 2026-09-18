@@ -38,6 +38,8 @@ export interface ServerPop3Config {
   enableAutoReply: boolean;
   autoReplySubjectTemplate?: string;
   autoReplyBodyTemplate?: string;
+  rejectionSubjectTemplate?: string;
+  rejectionBodyTemplate?: string;
   lastSyncTimestamp?: string;
 }
 
@@ -67,6 +69,9 @@ export const DEFAULT_SERVER_EMAIL_CONFIG: ServerPop3Config = {
   autoReplySubjectTemplate: '[{ticketNumber}] Received: {ticketTitle}',
   autoReplyBodyTemplate:
     'Hi {requesterName},\n\nThank you for submitting your issue to IT Support. Ticket [{ticketNumber}] has been created.\n\nSummary:\n• Ticket: [{ticketNumber}]\n• Subject: {ticketTitle}\n• Business Unit: {businessUnitName}\n• Priority: {priority}\n\nOur team is reviewing your report.\n\nBest regards,\nIT Service Desk',
+  rejectionSubjectTemplate: '[{securityRefId}] Ticket Creation Rejected - Unregistered Email Address',
+  rejectionBodyTemplate:
+    'Hello,\n\nYour inbound email regarding "{subject}" could not be processed into an IT support ticket.\n\n==================================================\nSECURITY NOTICE & INCIDENT DETAILS\n==================================================\n• Reference ID: {securityRefId}\n• Status: REJECTED (Unregistered Sender)\n• Sender Email: {senderEmail}\n• Timestamp: {timestamp}\n\n--------------------------------------------------\nREASON FOR REJECTION\n--------------------------------------------------\nYour email address is not registered in the IT Helpdesk system. For security and compliance reasons, all automated support requests must originate from registered employee accounts.\n\n--------------------------------------------------\nACTION REQUIRED\n--------------------------------------------------\nTo submit support tickets via email, please register your account on the IT Helpdesk portal or contact your Business Unit IT administrator for assistance.\n\nThank you,\nIT Support Desk Security Team\nUOA Hospitality Operations',
 };
 
 // In-memory fallback sets
@@ -375,6 +380,40 @@ export function generateServerAutoReply(
 }
 
 /**
+ * Generates automated rejection email text for unregistered senders replacing dynamic template tags
+ */
+export function generateRejectionEmail(
+  templateSubject: string | undefined,
+  templateBody: string | undefined,
+  vars: {
+    securityRefId: string;
+    senderEmail: string;
+    subject: string;
+    timestamp: string;
+  }
+): { subject: string; body: string } {
+  const defaultSubject = '[{securityRefId}] Ticket Creation Rejected - Unregistered Email Address';
+  const defaultBody =
+    'Hello,\n\nYour inbound email regarding "{subject}" could not be processed into an IT support ticket.\n\n==================================================\nSECURITY NOTICE & INCIDENT DETAILS\n==================================================\n• Reference ID: {securityRefId}\n• Status: REJECTED (Unregistered Sender)\n• Sender Email: {senderEmail}\n• Timestamp: {timestamp}\n\n--------------------------------------------------\nREASON FOR REJECTION\n--------------------------------------------------\nYour email address is not registered in the IT Helpdesk system. For security and compliance reasons, all automated support requests must originate from registered employee accounts.\n\n--------------------------------------------------\nACTION REQUIRED\n--------------------------------------------------\nTo submit support tickets via email, please register your account on the IT Helpdesk portal or contact your Business Unit IT administrator for assistance.\n\nThank you,\nIT Support Desk Security Team\nUOA Hospitality Operations';
+
+  const subTpl = templateSubject || defaultSubject;
+  const bodyTpl = templateBody || defaultBody;
+
+  const replacer = (text: string) => {
+    return text
+      .replace(/{securityRefId}/g, vars.securityRefId)
+      .replace(/{senderEmail}/g, vars.senderEmail)
+      .replace(/{subject}/g, vars.subject)
+      .replace(/{timestamp}/g, vars.timestamp);
+  };
+
+  return {
+    subject: replacer(subTpl),
+    body: replacer(bodyTpl),
+  };
+}
+
+/**
  * Ingests a single ParsedEmail into the Ticket Database
  */
 export async function ingestEmailReport(
@@ -441,6 +480,16 @@ export async function ingestEmailReport(
         const senderName = config.senderDisplayName || 'IT Support Desk';
 
         const securityRefId = `SEC-REJ-${Date.now().toString().slice(-6)}`;
+        const rejectionEmailContent = generateRejectionEmail(
+          config.rejectionSubjectTemplate,
+          config.rejectionBodyTemplate,
+          {
+            securityRefId,
+            senderEmail: cleanFrom,
+            subject: cleanSubject,
+            timestamp: new Date().toLocaleString(),
+          }
+        );
 
         if (smtpHost && cleanFrom) {
           try {
@@ -453,8 +502,8 @@ export async function ingestEmailReport(
               from: senderFrom,
               fromName: senderName,
               to: cleanFrom,
-              subject: `[${securityRefId}] Ticket Creation Rejected - Unregistered Email Address`,
-              body: `Hello,\n\nYour inbound email regarding "${cleanSubject}" could not be processed into an IT support ticket.\n\n==================================================\nSECURITY NOTICE & INCIDENT DETAILS\n==================================================\n• Reference ID: ${securityRefId}\n• Status: REJECTED (Unregistered Sender)\n• Sender Email: ${cleanFrom}\n• Timestamp: ${new Date().toLocaleString()}\n\n--------------------------------------------------\nREASON FOR REJECTION\n--------------------------------------------------\nYour email address is not registered in the IT Helpdesk system. For security and compliance reasons, all automated support requests must originate from registered employee accounts.\n\n--------------------------------------------------\nACTION REQUIRED\n--------------------------------------------------\nTo submit support tickets via email, please register your account on the IT Helpdesk portal or contact your Business Unit IT administrator for assistance.\n\nThank you,\nIT Helpdesk Security Team\nUOA Hospitality Operations`,
+              subject: rejectionEmailContent.subject,
+              body: rejectionEmailContent.body,
               timeoutMs: 15000,
             });
             bounceSent = true;
@@ -482,8 +531,8 @@ export async function ingestEmailReport(
           matchedDepartmentId: matchedDeptId,
           attachmentsCount: email.attachments.length,
           autoReplySent: bounceSent,
-          autoReplySubject: `[${securityRefId}] Ticket Creation Rejected - Unregistered Email Address`,
-          autoReplyBody: `Security rejection notice [${securityRefId}] sent to unregistered sender.`,
+          autoReplySubject: rejectionEmailContent.subject,
+          autoReplyBody: rejectionEmailContent.body,
           errorMessage: 'Sender email is not registered in the system.',
         };
 

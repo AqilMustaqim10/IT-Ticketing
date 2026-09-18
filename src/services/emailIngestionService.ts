@@ -31,6 +31,12 @@ export const DEFAULT_AUTO_REPLY_BODY_TEMPLATE =
 export const DEFAULT_REPLY_ACK_TEMPLATE =
   `Hi {requesterName},\n\nWe have received your update for ticket [{ticketNumber}]: "{ticketTitle}".\n\nYour message has been appended to the active support case history and our assigned IT specialist has been notified.\n\nBest regards,\nIT Support Desk`;
 
+export const DEFAULT_REJECTION_SUBJECT_TEMPLATE =
+  '[{securityRefId}] Ticket Creation Rejected - Unregistered Email Address';
+
+export const DEFAULT_REJECTION_BODY_TEMPLATE =
+  'Hello,\n\nYour inbound email regarding "{subject}" could not be processed into an IT support ticket.\n\n==================================================\nSECURITY NOTICE & INCIDENT DETAILS\n==================================================\n• Reference ID: {securityRefId}\n• Status: REJECTED (Unregistered Sender)\n• Sender Email: {senderEmail}\n• Timestamp: {timestamp}\n\n--------------------------------------------------\nREASON FOR REJECTION\n--------------------------------------------------\nYour email address is not registered in the IT Helpdesk system. For security and compliance reasons, all automated support requests must originate from registered employee accounts.\n\n--------------------------------------------------\nACTION REQUIRED\n--------------------------------------------------\nTo submit support tickets via email, please register your account on the IT Helpdesk portal or contact your Business Unit IT administrator for assistance.\n\nThank you,\nIT Support Desk Security Team\nUOA Hospitality Operations';
+
 export const DEFAULT_COMPANY_MAILBOX_CONFIG: Pop3MailboxConfig = {
   enabled: true,
   provider: 'COMPANY_POP3',
@@ -59,6 +65,8 @@ export const DEFAULT_COMPANY_MAILBOX_CONFIG: Pop3MailboxConfig = {
   enableAutoReply: true,
   autoReplySubjectTemplate: DEFAULT_AUTO_REPLY_SUBJECT_TEMPLATE,
   autoReplyBodyTemplate: DEFAULT_AUTO_REPLY_BODY_TEMPLATE,
+  rejectionSubjectTemplate: DEFAULT_REJECTION_SUBJECT_TEMPLATE,
+  rejectionBodyTemplate: DEFAULT_REJECTION_BODY_TEMPLATE,
   lastSyncTimestamp: undefined,
 };
 

@@ -55,6 +55,8 @@ import {
   DEFAULT_COMPANY_MAILBOX_CONFIG,
   DEFAULT_AUTO_REPLY_SUBJECT_TEMPLATE,
   DEFAULT_AUTO_REPLY_BODY_TEMPLATE,
+  DEFAULT_REJECTION_SUBJECT_TEMPLATE,
+  DEFAULT_REJECTION_BODY_TEMPLATE,
 } from '../../services/emailIngestionService';
 import { storageService } from '../../services/storageService';
 import { BUBadge } from '../BUBadge';
@@ -1081,6 +1083,65 @@ export const EmailIntegrationPage: React.FC<EmailIntegrationPageProps> = ({
                     <span
                       key={v}
                       className="px-2 py-0.5 rounded-md bg-white border border-slate-200 font-mono text-[11px] text-blue-700 font-semibold shadow-2xs"
+                    >
+                      {v}
+                    </span>
+                  ))}
+                </div>
+              </div>
+            </div>
+
+            {/* Section 5: Unregistered Sender Security Bounce-Back Notice Template */}
+            <div className="pt-4 border-t border-slate-100 space-y-3">
+              <div>
+                <h3 className="text-xs font-bold uppercase tracking-wider text-slate-700 flex items-center gap-1.5">
+                  <ShieldAlert className="w-4 h-4 text-rose-600" />
+                  <span>5. Unregistered Sender Security Bounce-Back Notice Template</span>
+                </h3>
+                <p className="text-[11px] text-slate-500">
+                  Configure the bounce-back email sent to unauthorized/unregistered senders attempting to submit tickets.
+                </p>
+              </div>
+
+              <div>
+                <label className="block text-xs font-semibold text-slate-700 mb-1">
+                  Rejection Subject Template
+                </label>
+                <input
+                  type="text"
+                  disabled={!isEditing}
+                  value={config.rejectionSubjectTemplate || DEFAULT_REJECTION_SUBJECT_TEMPLATE}
+                  onChange={(e) => setConfig({ ...config, rejectionSubjectTemplate: e.target.value })}
+                  className="w-full px-3 py-2 text-xs rounded-xl border border-slate-200 bg-slate-50 focus:bg-white focus:ring-2 focus:ring-blue-500 focus:outline-none font-mono disabled:opacity-60"
+                />
+              </div>
+
+              <div>
+                <label className="block text-xs font-semibold text-slate-700 mb-1">
+                  Rejection Body Template
+                </label>
+                <textarea
+                  rows={6}
+                  disabled={!isEditing}
+                  value={config.rejectionBodyTemplate || DEFAULT_REJECTION_BODY_TEMPLATE}
+                  onChange={(e) => setConfig({ ...config, rejectionBodyTemplate: e.target.value })}
+                  className="w-full p-3 text-xs rounded-xl border border-slate-200 bg-slate-50 focus:bg-white focus:ring-2 focus:ring-blue-500 focus:outline-none font-mono text-slate-800 disabled:opacity-60"
+                />
+              </div>
+
+              {/* Dynamic Rejection Variables Chips */}
+              <div className="bg-slate-50 rounded-xl p-3 border border-slate-200 text-xs space-y-1">
+                <span className="font-semibold text-slate-700 block">Available Security Template Variables:</span>
+                <div className="flex flex-wrap gap-1.5">
+                  {[
+                    '{securityRefId}',
+                    '{senderEmail}',
+                    '{subject}',
+                    '{timestamp}',
+                  ].map((v) => (
+                    <span
+                      key={v}
+                      className="px-2 py-0.5 rounded-md bg-white border border-slate-200 font-mono text-[11px] text-rose-700 font-semibold shadow-2xs"
                     >
                       {v}
                     </span>

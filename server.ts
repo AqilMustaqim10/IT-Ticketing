@@ -269,7 +269,7 @@ async function startServer() {
     if (!db) return res.status(503).json({ error: 'PostgreSQL not configured' });
     try {
       const { rows } = await db.query(
-        'SELECT u.id, u.username, u.full_name as "fullName", u.email, u.role, u.business_unit_id as "businessUnitId", u.department_id as "departmentId", COALESCE(u.department, d.name) as "department", u.avatar_url as "avatarUrl", u.must_change_password as "mustChangePassword", u.created_at as "createdAt" FROM users u LEFT JOIN departments d ON u.department_id = d.id ORDER BY u.full_name ASC'
+        'SELECT u.id, u.username, u.password_hash as "password", u.full_name as "fullName", u.email, u.role, u.business_unit_id as "businessUnitId", u.department_id as "departmentId", COALESCE(u.department, d.name) as "department", u.avatar_url as "avatarUrl", u.must_change_password as "mustChangePassword", u.created_at as "createdAt" FROM users u LEFT JOIN departments d ON u.department_id = d.id ORDER BY u.full_name ASC'
       );
       res.json(rows);
     } catch (err: any) {
