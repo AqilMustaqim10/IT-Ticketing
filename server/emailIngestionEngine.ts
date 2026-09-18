@@ -286,7 +286,7 @@ export async function detectPriorityAI(subject: string, body: string): Promise<'
 
     const ai = new GoogleGenAI({ apiKey });
     const response = await ai.models.generateContent({
-      model: 'gemini-3.8-flash',
+      model: 'gemini-2.5-flash',
       contents: `Analyze the following support email and classify its urgency strictly into one of these four levels: URGENT, HIGH, MEDIUM, LOW.
 Guidelines:
 - URGENT: Critical outages, hotel-wide system down, PMS down, emergency, severe operational halt.
@@ -467,7 +467,36 @@ export async function ingestEmailReport(
         matchedUserId = targetUser.id;
         matchedBUId = targetUser.business_unit_id || matchedBUId;
         matchedDeptId = targetUser.department_id || matchedDeptId;
+      }
+
+      // Validate matchedBUId exists in database, fallback if missing
+      const buCheck = await client.query('SELECT id FROM business_units WHERE id = $1 LIMIT 1', [matchedBUId]);
+      if (buCheck.rows.length === 0) {
+        const fallbackBu = await client.query('SELECT id FROM business_units LIMIT 1');
+        if (fallbackBu.rows.length > 0) {
+          matchedBUId = fallbackBu.rows[0].id;
+        }
+      }
+
+      // Validate matchedDeptId exists in database, fallback if missing
+      if (matchedDeptId) {
+        const deptCheck = await client.query('SELECT id FROM departments WHERE id = $1 LIMIT 1', [matchedDeptId]);
+        if (deptCheck.rows.length === 0) {
+          const fallbackDept = await client.query('SELECT id FROM departments LIMIT 1');
+          if (fallbackDept.rows.length > 0) {
+            matchedDeptId = fallbackDept.rows[0].id;
+          } else {
+            matchedDeptId = undefined;
+          }
+        }
       } else {
+        const fallbackDept = await client.query('SELECT id FROM departments LIMIT 1');
+        if (fallbackDept.rows.length > 0) {
+          matchedDeptId = fallbackDept.rows[0].id;
+        }
+      }
+
+      if (userRes.rows.length === 0) {
         // Unregistered sender detected - Reject ticket creation and send bounce-back email
         console.warn(`[Email Security] Rejected inbound email from unregistered sender: ${cleanFrom}`);
 
