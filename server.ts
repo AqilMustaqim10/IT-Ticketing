@@ -2,6 +2,7 @@ import express from 'express';
 import path from 'path';
 import fs from 'fs';
 import os from 'os';
+import crypto from 'crypto';
 import { createServer as createViteServer } from 'vite';
 import pg from 'pg';
 import dotenv from 'dotenv';
@@ -37,6 +38,15 @@ function getDbPool(): pg.Pool | null {
     });
   }
   return pool;
+}
+
+function hashPassword(password: string): string {
+  if (!password) password = 'password123';
+  if (password.length === 128 && /^[0-9a-fA-F]+$/.test(password)) {
+    return password;
+  }
+  const salt = 'uoa-helpdesk-secure-salt-2026';
+  return crypto.pbkdf2Sync(password, salt, 10000, 64, 'sha512').toString('hex');
 }
 
 /**
@@ -296,9 +306,16 @@ async function startServer() {
       }
 
       const user = rows[0];
-      const actualHash = user.password_hash || 'password123';
-      if (actualHash !== cleanPassword) {
+      const storedHash = user.password_hash || hashPassword('password123');
+      const inputHash = hashPassword(cleanPassword);
+      const isMatch = (storedHash === inputHash) || (user.password_hash === cleanPassword);
+
+      if (!isMatch) {
         return res.status(401).json({ success: false, error: 'Incorrect password. Default password is "password123".' });
+      }
+
+      if (user.password_hash === cleanPassword && storedHash !== inputHash) {
+        await db.query('UPDATE users SET password_hash = $1 WHERE id = $2', [inputHash, user.id]);
       }
 
       delete user.password_hash;
@@ -323,11 +340,12 @@ async function startServer() {
         }
       }
 
+      const hashedPassword = hashPassword(password || 'password123');
       const { rows } = await db.query(
         `INSERT INTO users (id, username, password_hash, full_name, email, role, business_unit_id, department_id, department, avatar_url, must_change_password)
          VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
          RETURNING id, username, full_name as "fullName", email, role, business_unit_id as "businessUnitId", department_id as "departmentId", department, avatar_url as "avatarUrl", must_change_password as "mustChangePassword", created_at as "createdAt"`,
-        [id, username.toLowerCase(), password || 'password123', fullName, email, role, businessUnitId || null, departmentId || null, deptName || null, avatarUrl || null, mustChangePassword ?? true]
+        [id, username.toLowerCase(), hashedPassword, fullName, email, role, businessUnitId || null, departmentId || null, deptName || null, avatarUrl || null, mustChangePassword ?? true]
       );
       res.json(rows[0]);
     } catch (err: any) {
@@ -365,7 +383,10 @@ async function startServer() {
         values.push(dName);
       }
       if (avatarUrl !== undefined) { fields.push(`avatar_url = $${idx++}`); values.push(avatarUrl); }
-      if (password !== undefined) { fields.push(`password_hash = $${idx++}`); values.push(password); }
+      if (password !== undefined) { 
+        fields.push(`password_hash = $${idx++}`); 
+        values.push(hashPassword(password)); 
+      }
       if (mustChangePassword !== undefined) { fields.push(`must_change_password = $${idx++}`); values.push(mustChangePassword); }
 
       if (fields.length === 0) {
@@ -475,11 +496,14 @@ async function startServer() {
               if (matchedD) deptName = matchedD.name;
             }
 
+            const hashedPassword = hashPassword(u.password || 'password123');
+
             await client.query(`
               INSERT INTO users (id, username, password_hash, full_name, email, role, business_unit_id, department_id, department, avatar_url, must_change_password)
               VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
               ON CONFLICT (id) DO UPDATE SET
                 username = EXCLUDED.username,
+                password_hash = COALESCE(EXCLUDED.password_hash, users.password_hash),
                 full_name = EXCLUDED.full_name,
                 email = EXCLUDED.email,
                 role = EXCLUDED.role,
@@ -491,7 +515,7 @@ async function startServer() {
             `, [
               u.id,
               u.username.toLowerCase(),
-              u.password || 'password123',
+              hashedPassword,
               u.fullName,
               u.email,
               u.role,
