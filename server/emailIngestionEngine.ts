@@ -6,11 +6,24 @@
  * and runs automated background mailbox polling.
  */
 
-import pg from 'pg';
+import mysql from 'mysql2/promise';
 import { GoogleGenAI } from "@google/genai";
 import { ParsedEmail, ParsedEmailAttachment, extractProblemContent } from './emailParser';
 import { fetchPop3Emails, testPop3Mailbox, Pop3Options } from './pop3Client';
 import { sendSmtpEmail } from './smtpClient';
+
+function convertSqlForMySQL(sql: string): string {
+  let converted = sql.replace(/\$\d+/g, '?');
+  converted = converted.replace(/ON CONFLICT\s*\([^)]+\)\s*DO UPDATE SET/gi, 'ON DUPLICATE KEY UPDATE');
+  converted = converted.replace(/EXCLUDED\.([a-zA-Z0-9_]+)/g, 'VALUES($1)');
+  return converted;
+}
+
+async function queryDb(db: mysql.Pool | mysql.PoolConnection, sql: string, params: any[] = []): Promise<{ rows: any[] }> {
+  const mysqlSql = convertSqlForMySQL(sql);
+  const [rows] = await db.query(mysqlSql, params);
+  return { rows: Array.isArray(rows) ? rows : [rows] };
+}
 
 export interface ServerPop3Config {
   enabled: boolean;
@@ -80,97 +93,26 @@ let activePollerTimer: NodeJS.Timeout | null = null;
 let currentConfig: ServerPop3Config = { ...DEFAULT_SERVER_EMAIL_CONFIG };
 
 /**
- * Initializes email tables in PostgreSQL if connected
+ * Initializes email tables in MySQL if connected
  */
-export async function initEmailTables(pool: pg.Pool) {
+export async function initEmailTables(pool: mysql.Pool) {
   try {
-    const client = await pool.connect();
+    const client = await pool.getConnection();
     try {
-      await client.query(`
-        CREATE TABLE IF NOT EXISTS email_config (
-          id VARCHAR(64) PRIMARY KEY,
-          config JSONB NOT NULL,
-          updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
-        );
-
-        CREATE TABLE IF NOT EXISTS processed_email_messages (
-          message_id VARCHAR(255) PRIMARY KEY,
-          ticket_id VARCHAR(64),
-          created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
-        );
-
-        CREATE TABLE IF NOT EXISTS email_logs (
-          id VARCHAR(64) PRIMARY KEY,
-          message_id VARCHAR(255),
-          from_address VARCHAR(255) NOT NULL,
-          from_name VARCHAR(255),
-          to_address VARCHAR(255) NOT NULL,
-          subject TEXT NOT NULL,
-          body_preview TEXT,
-          raw_body TEXT,
-          received_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
-          status VARCHAR(50) NOT NULL,
-          created_ticket_id VARCHAR(64),
-          created_ticket_number VARCHAR(32),
-          matched_user_id VARCHAR(64),
-          matched_business_unit_id VARCHAR(64),
-          matched_department_id VARCHAR(64),
-          error_message TEXT,
-          attachments_count INT DEFAULT 0,
-          auto_reply_sent BOOLEAN DEFAULT FALSE,
-          auto_reply_subject TEXT,
-          auto_reply_body TEXT
-        );
-      `);
-
       // Load saved config if present
-      const res = await client.query('SELECT config FROM email_config WHERE id = $1', ['primary_mailbox']);
+      const res = await queryDb(client, 'SELECT config FROM email_config WHERE id = ?', ['primary_mailbox']);
       if (res.rows.length > 0 && res.rows[0].config) {
-        currentConfig = { ...DEFAULT_SERVER_EMAIL_CONFIG, ...res.rows[0].config };
+        const cfg = typeof res.rows[0].config === 'string' ? JSON.parse(res.rows[0].config) : res.rows[0].config;
+        currentConfig = { ...DEFAULT_SERVER_EMAIL_CONFIG, ...cfg };
       }
 
       // Load known processed message IDs
-      const msgRes = await client.query('SELECT message_id FROM processed_email_messages LIMIT 2000');
+      const msgRes = await queryDb(client, 'SELECT message_id FROM processed_email_messages LIMIT 2000');
       for (const row of msgRes.rows) {
         memoryProcessedMessageIds.add(row.message_id);
       }
 
-      // One-time cleanup for any previously ingested tickets with raw footers or false URGENT priorities
-      try {
-        await client.query(`
-          UPDATE tickets
-          SET description = REGEXP_REPLACE(description, E'\\n*---\\n*📨 \\[Auto-ingested via Corporate POP3 Mailbox[^\\]]*\\]', '', 'g')
-          WHERE description LIKE '%[Auto-ingested via Corporate POP3 Mailbox%';
-        `);
-
-        // Re-evaluate tickets previously set to URGENT if their title/description are routine requests (e.g. printer, toner, slow, mouse, wifi)
-        await client.query(`
-          UPDATE tickets
-          SET priority = 'MEDIUM'
-          WHERE priority = 'URGENT'
-            AND LOWER(title) NOT LIKE '%urgent%'
-            AND LOWER(title) NOT LIKE '%emergency%'
-            AND LOWER(title) NOT LIKE '%down%'
-            AND LOWER(title) NOT LIKE '%outage%'
-            AND LOWER(title) NOT LIKE '%blackout%'
-            AND (
-              LOWER(title) LIKE '%printer%' OR
-              LOWER(title) LIKE '%toner%' OR
-              LOWER(title) LIKE '%mouse%' OR
-              LOWER(title) LIKE '%keyboard%' OR
-              LOWER(title) LIKE '%monitor%' OR
-              LOWER(title) LIKE '%slow%' OR
-              LOWER(title) LIKE '%test%' OR
-              LOWER(title) LIKE '%wifi%' OR
-              LOWER(title) LIKE '%email%' OR
-              LOWER(title) LIKE '%password%'
-            );
-        `);
-      } catch (cleanErr: any) {
-        // Safe ignore
-      }
-
-      console.log('Email Ingestion PostgreSQL tables verified and synced.');
+      console.log('Email Ingestion MySQL tables verified and synced.');
     } finally {
       client.release();
     }
@@ -189,19 +131,20 @@ export function getEmailConfig(): ServerPop3Config {
 /**
  * Saves POP3 configuration and reconfigures auto-poller
  */
-export async function saveEmailConfig(pool: pg.Pool | null, newConfig: Partial<ServerPop3Config>): Promise<ServerPop3Config> {
+export async function saveEmailConfig(pool: mysql.Pool | null, newConfig: Partial<ServerPop3Config>): Promise<ServerPop3Config> {
   currentConfig = { ...currentConfig, ...newConfig };
 
   if (pool) {
     try {
-      await pool.query(
+      await queryDb(
+        pool,
         `INSERT INTO email_config (id, config, updated_at)
-         VALUES ($1, $2, CURRENT_TIMESTAMP)
-         ON CONFLICT (id) DO UPDATE SET config = EXCLUDED.config, updated_at = CURRENT_TIMESTAMP`,
+         VALUES (?, ?, CURRENT_TIMESTAMP)
+         ON DUPLICATE KEY UPDATE config = VALUES(config), updated_at = CURRENT_TIMESTAMP`,
         ['primary_mailbox', JSON.stringify(currentConfig)]
       );
     } catch (err: any) {
-      console.error('Failed to save email config to PostgreSQL:', err.message);
+      console.error('Failed to save email config to MySQL:', err.message);
     }
   }
 
@@ -417,7 +360,7 @@ export function generateRejectionEmail(
  * Ingests a single ParsedEmail into the Ticket Database
  */
 export async function ingestEmailReport(
-  pool: pg.Pool | null,
+  pool: mysql.Pool | null,
   email: ParsedEmail,
   config: ServerPop3Config = currentConfig
 ): Promise<{
@@ -451,13 +394,14 @@ export async function ingestEmailReport(
   let isReply = false;
 
   if (pool) {
-    const client = await pool.connect();
+    const client = await pool.getConnection();
     try {
-      await client.query('BEGIN');
+      await client.beginTransaction();
 
       // 1. Resolve User (Strict check: Unregistered senders are rejected and bounced back)
-      const userRes = await client.query(
-        'SELECT id, username, full_name, email, business_unit_id, department_id FROM users WHERE LOWER(email) = $1 LIMIT 1',
+      const userRes = await queryDb(
+        client,
+        'SELECT id, username, full_name, email, business_unit_id, department_id FROM users WHERE LOWER(email) = ? LIMIT 1',
         [cleanFrom]
       );
 
@@ -470,9 +414,9 @@ export async function ingestEmailReport(
       }
 
       // Validate matchedBUId exists in database, fallback if missing
-      const buCheck = await client.query('SELECT id FROM business_units WHERE id = $1 LIMIT 1', [matchedBUId]);
+      const buCheck = await queryDb(client, 'SELECT id FROM business_units WHERE id = ? LIMIT 1', [matchedBUId]);
       if (buCheck.rows.length === 0) {
-        const fallbackBu = await client.query('SELECT id FROM business_units LIMIT 1');
+        const fallbackBu = await queryDb(client, 'SELECT id FROM business_units LIMIT 1');
         if (fallbackBu.rows.length > 0) {
           matchedBUId = fallbackBu.rows[0].id;
         }
@@ -480,9 +424,9 @@ export async function ingestEmailReport(
 
       // Validate matchedDeptId exists in database, fallback if missing
       if (matchedDeptId) {
-        const deptCheck = await client.query('SELECT id FROM departments WHERE id = $1 LIMIT 1', [matchedDeptId]);
+        const deptCheck = await queryDb(client, 'SELECT id FROM departments WHERE id = ? LIMIT 1', [matchedDeptId]);
         if (deptCheck.rows.length === 0) {
-          const fallbackDept = await client.query('SELECT id FROM departments LIMIT 1');
+          const fallbackDept = await queryDb(client, 'SELECT id FROM departments LIMIT 1');
           if (fallbackDept.rows.length > 0) {
             matchedDeptId = fallbackDept.rows[0].id;
           } else {
@@ -490,7 +434,7 @@ export async function ingestEmailReport(
           }
         }
       } else {
-        const fallbackDept = await client.query('SELECT id FROM departments LIMIT 1');
+        const fallbackDept = await queryDb(client, 'SELECT id FROM departments LIMIT 1');
         if (fallbackDept.rows.length > 0) {
           matchedDeptId = fallbackDept.rows[0].id;
         }
@@ -565,9 +509,10 @@ export async function ingestEmailReport(
           errorMessage: 'Sender email is not registered in the system.',
         };
 
-        await client.query(
+        await queryDb(
+          client,
           `INSERT INTO email_logs (id, message_id, from_address, from_name, to_address, subject, body_preview, raw_body, received_at, status, created_ticket_id, created_ticket_number, matched_user_id, matched_business_unit_id, matched_department_id, attachments_count, auto_reply_sent, auto_reply_subject, auto_reply_body, error_message)
-           VALUES ($1, $2, $3, $4, $5, $6, $7, $8, CURRENT_TIMESTAMP, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19)`,
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
           [
             rejectedLog.id,
             rejectedLog.messageId,
@@ -592,14 +537,15 @@ export async function ingestEmailReport(
         );
 
         if (email.messageId) {
-          await client.query(
-            `INSERT INTO processed_email_messages (message_id, ticket_id) VALUES ($1, $2) ON CONFLICT (message_id) DO NOTHING`,
+          await queryDb(
+            client,
+            `INSERT INTO processed_email_messages (message_id, ticket_id) VALUES (?, ?) ON DUPLICATE KEY UPDATE message_id = message_id`,
             [email.messageId, 'rejected']
           );
           memoryProcessedMessageIds.add(email.messageId);
         }
 
-        await client.query('COMMIT');
+        await client.commit();
 
         return {
           success: false,
@@ -622,7 +568,7 @@ export async function ingestEmailReport(
       const ticketMatch = cleanSubject.match(/\[(TCK-\d+)\]/i);
       if (ticketMatch && ticketMatch[1]) {
         const tckNum = ticketMatch[1].toUpperCase();
-        const existingTckRes = await client.query(
+        const existingTckRes = await queryDb(client, 
           'SELECT id, ticket_number, title, business_unit_id, department_id, activities, attachments FROM tickets WHERE UPPER(ticket_number) = $1 LIMIT 1',
           [tckNum]
         );
@@ -656,13 +602,13 @@ export async function ingestEmailReport(
 
           currentActivities.push(newActivity);
 
-          await client.query(
+          await queryDb(client, 
             'UPDATE tickets SET activities = $1, attachments = $2, updated_at = CURRENT_TIMESTAMP WHERE id = $3',
             [JSON.stringify(currentActivities), JSON.stringify(updatedAttachments), tck.id]
           );
 
           // Add audit log
-          await client.query(
+          await queryDb(client, 
             `INSERT INTO audit_logs (id, action, details, user_id, username, ticket_id, business_unit_id, timestamp)
              VALUES ($1, $2, $3, $4, $5, $6, $7, CURRENT_TIMESTAMP)`,
             [
@@ -681,7 +627,7 @@ export async function ingestEmailReport(
       // 3. If not a reply, create a new Ticket
       if (!isReply) {
         // Generate unique Ticket Number using max ticket number or timestamp/random suffix to prevent collisions in batch sync
-        const maxRes = await client.query('SELECT ticket_number FROM tickets ORDER BY created_at DESC LIMIT 1');
+        const maxRes = await queryDb(client, 'SELECT ticket_number FROM tickets ORDER BY created_at DESC LIMIT 1');
         let nextNum = 1001;
         if (maxRes.rows.length > 0 && maxRes.rows[0].ticket_number) {
           const match = maxRes.rows[0].ticket_number.match(/TCK-(\d+)/i);
@@ -689,7 +635,7 @@ export async function ingestEmailReport(
             nextNum = parseInt(match[1], 10) + 1;
           }
         }
-        const countRes = await client.query('SELECT COUNT(*) as cnt FROM tickets');
+        const countRes = await queryDb(client, 'SELECT COUNT(*) as cnt FROM tickets');
         const count = parseInt(countRes.rows[0]?.cnt || '0', 10) + 1001;
         if (nextNum <= count) {
           nextNum = count + Math.floor(Math.random() * 50) + 1;
@@ -719,7 +665,7 @@ export async function ingestEmailReport(
           },
         ];
 
-        await client.query(
+        await queryDb(client, 
           `INSERT INTO tickets (id, ticket_number, title, description, category, priority, status, business_unit_id, department_id, created_by_id, assigned_to_id, activities, attachments, created_at, updated_at)
            VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)`,
           [
@@ -740,7 +686,7 @@ export async function ingestEmailReport(
         );
 
         // Add audit log
-        await client.query(
+        await queryDb(client, 
           `INSERT INTO audit_logs (id, action, details, user_id, username, ticket_id, business_unit_id, timestamp)
            VALUES ($1, $2, $3, $4, $5, $6, $7, CURRENT_TIMESTAMP)`,
           [
@@ -757,7 +703,7 @@ export async function ingestEmailReport(
 
       // 4. Record Message ID to prevent duplicate processing
       if (email.messageId) {
-        await client.query(
+        await queryDb(client, 
           `INSERT INTO processed_email_messages (message_id, ticket_id, created_at)
            VALUES ($1, $2, CURRENT_TIMESTAMP)
            ON CONFLICT (message_id) DO NOTHING`,
@@ -772,12 +718,12 @@ export async function ingestEmailReport(
       let deptNameForAck = 'IT Support & Systems';
 
       try {
-        const buInfoRes = await client.query('SELECT name, code FROM business_units WHERE id = $1 LIMIT 1', [matchedBUId]);
+        const buInfoRes = await queryDb(client, 'SELECT name, code FROM business_units WHERE id = $1 LIMIT 1', [matchedBUId]);
         if (buInfoRes.rows.length > 0) {
           buName = buInfoRes.rows[0].name;
           buCode = buInfoRes.rows[0].code;
         }
-        const deptInfoRes = await client.query('SELECT name FROM departments WHERE id = $1 LIMIT 1', [matchedDeptId]);
+        const deptInfoRes = await queryDb(client, 'SELECT name FROM departments WHERE id = $1 LIMIT 1', [matchedDeptId]);
         if (deptInfoRes.rows.length > 0) {
           deptNameForAck = deptInfoRes.rows[0].name;
         }
@@ -872,7 +818,7 @@ export async function ingestEmailReport(
         errorMessage: autoReplySendError,
       };
 
-      await client.query(
+      await queryDb(client, 
         `INSERT INTO email_logs (id, message_id, from_address, from_name, to_address, subject, body_preview, raw_body, received_at, status, created_ticket_id, created_ticket_number, matched_user_id, matched_business_unit_id, matched_department_id, attachments_count, auto_reply_sent, auto_reply_subject, auto_reply_body, error_message)
          VALUES ($1, $2, $3, $4, $5, $6, $7, $8, CURRENT_TIMESTAMP, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19)`,
         [
@@ -898,7 +844,7 @@ export async function ingestEmailReport(
         ]
       );
 
-      await client.query('COMMIT');
+      await queryDb(client, 'COMMIT');
 
       return {
         success: true,
@@ -911,7 +857,7 @@ export async function ingestEmailReport(
         log: emailLog,
       };
     } catch (err: any) {
-      await client.query('ROLLBACK');
+      await queryDb(client, 'ROLLBACK');
       console.error('Error during email ingestion transaction:', err.message);
       return {
         success: false,
@@ -940,7 +886,7 @@ export async function ingestEmailReport(
  * Triggers a manual or automatic POP3 Mailbox Sync
  */
 export async function executePop3Sync(
-  pool: pg.Pool | null,
+  pool: mysql.Pool | null,
   config: ServerPop3Config = currentConfig
 ): Promise<{
   success: boolean;
@@ -1075,7 +1021,7 @@ export async function executePop3Sync(
 /**
  * Starts the automated server-side POP3 Poller
  */
-export function startBackgroundEmailPoller(pool: pg.Pool | null) {
+export function startBackgroundEmailPoller(pool: mysql.Pool | null) {
   if (activePollerTimer) {
     clearInterval(activePollerTimer);
     activePollerTimer = null;

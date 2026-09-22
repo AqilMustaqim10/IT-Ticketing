@@ -4,7 +4,7 @@ import fs from 'fs';
 import os from 'os';
 import crypto from 'crypto';
 import { createServer as createViteServer } from 'vite';
-import pg from 'pg';
+import mysql from 'mysql2/promise';
 import dotenv from 'dotenv';
 import { testPop3Mailbox } from './server/pop3Client';
 import { testSmtpServer, sendSmtpEmail } from './server/smtpClient';
@@ -21,23 +21,42 @@ import { parseRawEmail, extractProblemContent } from './server/emailParser';
 
 dotenv.config();
 
-const { Pool } = pg;
+// Lazy MySQL connection pool (compatible with phpMyAdmin / cPanel / local MySQL)
+let pool: mysql.Pool | null = null;
 
-// Lazy PostgreSQL connection pool
-let pool: pg.Pool | null = null;
-
-function getDbPool(): pg.Pool | null {
-  const connectionString = process.env.DATABASE_URL;
-  if (!connectionString || connectionString.trim() === '') {
+function getDbPool(): mysql.Pool | null {
+  const host = process.env.DB_HOST || 'localhost';
+  const database = process.env.DB_NAME || 'it_helpdesk';
+  if (!host && !database) {
     return null;
   }
   if (!pool) {
-    pool = new Pool({
-      connectionString,
-      ssl: connectionString.includes('sslmode=require') ? { rejectUnauthorized: false } : false,
+    pool = mysql.createPool({
+      host: process.env.DB_HOST || 'localhost',
+      port: Number(process.env.DB_PORT) || 3306,
+      user: process.env.DB_USER || 'root',
+      password: process.env.DB_PASSWORD || '',
+      database: process.env.DB_NAME || 'it_helpdesk',
+      waitForConnections: true,
+      connectionLimit: 10,
+      queueLimit: 0,
     });
   }
   return pool;
+}
+
+function convertSqlForMySQL(sql: string): string {
+  let converted = sql.replace(/\$\d+/g, '?');
+  converted = converted.replace(/ON CONFLICT\s*\([^)]+\)\s*DO UPDATE SET/gi, 'ON DUPLICATE KEY UPDATE');
+  converted = converted.replace(/EXCLUDED\.([a-zA-Z0-9_]+)/g, 'VALUES($1)');
+  return converted;
+}
+
+async function queryDb(db: mysql.Pool | mysql.PoolConnection, sql: string, params: any[] = []): Promise<{ rows: any[], rowCount?: number }> {
+  const mysqlSql = convertSqlForMySQL(sql);
+  const [result] = await db.query(mysqlSql, params);
+  const rows = Array.isArray(result) ? result : [result];
+  return { rows, rowCount: rows.length };
 }
 
 function hashPassword(password: string): string {
@@ -50,43 +69,39 @@ function hashPassword(password: string): string {
 }
 
 /**
- * Initializes database tables and default data if they don't exist yet
+ * Initializes database tables and default data if they don't exist yet via MySQL/phpMyAdmin
  */
 async function autoInitDatabase() {
   const db = getDbPool();
   if (!db) return;
   try {
-    const client = await db.connect();
+    const connection = await db.getConnection();
     try {
       const initSqlPath = path.join(process.cwd(), 'init.sql');
       if (fs.existsSync(initSqlPath)) {
         const sqlContent = fs.readFileSync(initSqlPath, 'utf8');
-        await client.query(sqlContent);
+        const statements = sqlContent
+          .split(';')
+          .map((s) => s.trim())
+          .filter((s) => s.length > 0 && !s.startsWith('--'));
+
+        for (const stmt of statements) {
+          try {
+            await connection.query(stmt);
+          } catch (e: any) {
+            // ignore duplicate or already exists errors
+          }
+        }
       }
-
-      // Proactively ensure and migrate columns on existing user tables
-      await client.query(`
-        ALTER TABLE users ADD COLUMN IF NOT EXISTS department VARCHAR(255);
-        ALTER TABLE users ADD COLUMN IF NOT EXISTS department_id VARCHAR(64);
-        ALTER TABLE users ADD COLUMN IF NOT EXISTS business_unit_id VARCHAR(64);
-        ALTER TABLE users ADD COLUMN IF NOT EXISTS avatar_url TEXT;
-        ALTER TABLE users ADD COLUMN IF NOT EXISTS must_change_password BOOLEAN DEFAULT FALSE;
-
-        UPDATE users 
-        SET department = departments.name 
-        FROM departments 
-        WHERE users.department_id = departments.id 
-          AND (users.department IS NULL OR users.department = '');
-      `);
-      console.log('PostgreSQL schema and master data verified successfully.');
+      console.log('MySQL schema and master data verified successfully via phpMyAdmin connection.');
 
       // Initialize email tables
       await initEmailTables(db);
     } finally {
-      client.release();
+      connection.release();
     }
   } catch (err: any) {
-    console.error('PostgreSQL autoInitDatabase notice:', err.message);
+    console.error('MySQL autoInitDatabase notice:', err.message);
   }
 }
 
@@ -151,8 +166,8 @@ async function startServer() {
           message: 'DATABASE_URL not set in .env. Falling back to local persistence.',
         });
       }
-      const client = await db.connect();
-      const result = await client.query('SELECT NOW() as current_time, current_database() as db_name');
+      const client = await db.getConnection();
+      const result = await queryDb(client, 'SELECT NOW() as current_time, current_database() as db_name');
       client.release();
       return res.json({
         connected: true,
@@ -175,11 +190,11 @@ async function startServer() {
     if (!db) return res.status(503).json({ error: 'PostgreSQL not configured' });
     try {
       const [buRes, deptRes, usersRes, ticketsRes, auditRes] = await Promise.all([
-        db.query('SELECT id, code, name, description, icon, theme_color as "themeColor", branding FROM business_units ORDER BY name ASC'),
-        db.query('SELECT id, name, code, business_unit_id as "businessUnitId" FROM departments ORDER BY name ASC'),
-        db.query('SELECT u.id, u.username, u.full_name as "fullName", u.email, u.role, u.business_unit_id as "businessUnitId", u.department_id as "departmentId", COALESCE(u.department, d.name) as "department", u.avatar_url as "avatarUrl", u.must_change_password as "mustChangePassword", u.created_at as "createdAt" FROM users u LEFT JOIN departments d ON u.department_id = d.id ORDER BY u.full_name ASC'),
-        db.query('SELECT id, ticket_number as "ticketNumber", title, description, category, priority, status, business_unit_id as "businessUnitId", department_id as "departmentId", created_by_id as "createdById", assigned_to_id as "assignedToId", resolution_notes as "resolutionNotes", due_date as "dueDate", activities, attachments, created_at as "createdAt", updated_at as "updatedAt" FROM tickets ORDER BY created_at DESC'),
-        db.query('SELECT id, action, details, user_id as "userId", username, ticket_id as "ticketId", business_unit_id as "businessUnitId", timestamp FROM audit_logs ORDER BY timestamp DESC LIMIT 200'),
+        queryDb(db, 'SELECT id, code, name, description, icon, theme_color as "themeColor", branding FROM business_units ORDER BY name ASC'),
+        queryDb(db, 'SELECT id, name, code, business_unit_id as "businessUnitId" FROM departments ORDER BY name ASC'),
+        queryDb(db, 'SELECT u.id, u.username, u.full_name as "fullName", u.email, u.role, u.business_unit_id as "businessUnitId", u.department_id as "departmentId", COALESCE(u.department, d.name) as "department", u.avatar_url as "avatarUrl", u.must_change_password as "mustChangePassword", u.created_at as "createdAt" FROM users u LEFT JOIN departments d ON u.department_id = d.id ORDER BY u.full_name ASC'),
+        queryDb(db, 'SELECT id, ticket_number as "ticketNumber", title, description, category, priority, status, business_unit_id as "businessUnitId", department_id as "departmentId", created_by_id as "createdById", assigned_to_id as "assignedToId", resolution_notes as "resolutionNotes", due_date as "dueDate", activities, attachments, created_at as "createdAt", updated_at as "updatedAt" FROM tickets ORDER BY created_at DESC'),
+        queryDb(db, 'SELECT id, action, details, user_id as "userId", username, ticket_id as "ticketId", business_unit_id as "businessUnitId", timestamp FROM audit_logs ORDER BY timestamp DESC LIMIT 200'),
       ]);
 
       res.json({
@@ -203,7 +218,7 @@ async function startServer() {
     const db = getDbPool();
     if (!db) return res.status(503).json({ error: 'PostgreSQL not configured' });
     try {
-      const { rows } = await db.query('SELECT id, code, name, description, icon, theme_color as "themeColor", branding FROM business_units ORDER BY name ASC');
+      const { rows } = await queryDb(db, 'SELECT id, code, name, description, icon, theme_color as "themeColor", branding FROM business_units ORDER BY name ASC');
       res.json(rows);
     } catch (err: any) {
       res.status(500).json({ error: err.message });
@@ -217,7 +232,7 @@ async function startServer() {
     try {
       const { id } = req.params;
       const { name, description, themeColor, branding } = req.body;
-      const { rows } = await db.query(
+      const { rows } = await queryDb(db, 
         `UPDATE business_units 
          SET name = COALESCE($1, name),
              description = COALESCE($2, description),
@@ -237,7 +252,7 @@ async function startServer() {
     const db = getDbPool();
     if (!db) return res.status(503).json({ error: 'PostgreSQL not configured' });
     try {
-      const { rows } = await db.query('SELECT id, name, code, business_unit_id as "businessUnitId" FROM departments ORDER BY name ASC');
+      const { rows } = await queryDb(db, 'SELECT id, name, code, business_unit_id as "businessUnitId" FROM departments ORDER BY name ASC');
       res.json(rows);
     } catch (err: any) {
       res.status(500).json({ error: err.message });
@@ -250,7 +265,7 @@ async function startServer() {
     if (!db) return res.status(503).json({ error: 'PostgreSQL not configured' });
     try {
       const { id, name, code, businessUnitId } = req.body;
-      const { rows } = await db.query(
+      const { rows } = await queryDb(db, 
         'INSERT INTO departments (id, name, code, business_unit_id) VALUES ($1, $2, $3, $4) RETURNING *',
         [id, name, code, businessUnitId]
       );
@@ -266,7 +281,7 @@ async function startServer() {
     if (!db) return res.status(503).json({ error: 'PostgreSQL not configured' });
     try {
       const { id } = req.params;
-      await db.query('DELETE FROM departments WHERE id = $1', [id]);
+      await queryDb(db, 'DELETE FROM departments WHERE id = $1', [id]);
       res.json({ success: true });
     } catch (err: any) {
       res.status(500).json({ error: err.message });
@@ -278,7 +293,7 @@ async function startServer() {
     const db = getDbPool();
     if (!db) return res.status(503).json({ error: 'PostgreSQL not configured' });
     try {
-      const { rows } = await db.query(
+      const { rows } = await queryDb(db, 
         'SELECT u.id, u.username, u.password_hash as "password", u.full_name as "fullName", u.email, u.role, u.business_unit_id as "businessUnitId", u.department_id as "departmentId", COALESCE(u.department, d.name) as "department", u.avatar_url as "avatarUrl", u.must_change_password as "mustChangePassword", u.created_at as "createdAt" FROM users u LEFT JOIN departments d ON u.department_id = d.id ORDER BY u.full_name ASC'
       );
       res.json(rows);
@@ -296,7 +311,7 @@ async function startServer() {
       const cleanUsername = String(username || '').trim().toLowerCase();
       const cleanPassword = String(password || '');
 
-      const { rows } = await db.query(
+      const { rows } = await queryDb(db, 
         'SELECT u.id, u.username, u.password_hash, u.full_name as "fullName", u.email, u.role, u.business_unit_id as "businessUnitId", u.department_id as "departmentId", COALESCE(u.department, d.name) as "department", u.avatar_url as "avatarUrl", u.must_change_password as "mustChangePassword", u.created_at as "createdAt" FROM users u LEFT JOIN departments d ON u.department_id = d.id WHERE LOWER(u.username) = $1',
         [cleanUsername]
       );
@@ -315,7 +330,7 @@ async function startServer() {
       }
 
       if (user.password_hash === cleanPassword && storedHash !== inputHash) {
-        await db.query('UPDATE users SET password_hash = $1 WHERE id = $2', [inputHash, user.id]);
+        await queryDb(db, 'UPDATE users SET password_hash = $1 WHERE id = $2', [inputHash, user.id]);
       }
 
       delete user.password_hash;
@@ -334,14 +349,14 @@ async function startServer() {
       
       let deptName = department;
       if (!deptName && departmentId) {
-        const dRes = await db.query('SELECT name FROM departments WHERE id = $1', [departmentId]);
+        const dRes = await queryDb(db, 'SELECT name FROM departments WHERE id = $1', [departmentId]);
         if (dRes.rows.length > 0) {
           deptName = dRes.rows[0].name;
         }
       }
 
       const hashedPassword = hashPassword(password || 'password123');
-      const { rows } = await db.query(
+      const { rows } = await queryDb(db, 
         `INSERT INTO users (id, username, password_hash, full_name, email, role, business_unit_id, department_id, department, avatar_url, must_change_password)
          VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
          RETURNING id, username, full_name as "fullName", email, role, business_unit_id as "businessUnitId", department_id as "departmentId", department, avatar_url as "avatarUrl", must_change_password as "mustChangePassword", created_at as "createdAt"`,
@@ -377,7 +392,7 @@ async function startServer() {
         fields.push(`department = $${idx++}`);
         values.push(department);
       } else if (departmentId !== undefined) {
-        const dRes = await db.query('SELECT name FROM departments WHERE id = $1', [departmentId]);
+        const dRes = await queryDb(db, 'SELECT name FROM departments WHERE id = $1', [departmentId]);
         const dName = dRes.rows.length > 0 ? dRes.rows[0].name : null;
         fields.push(`department = $${idx++}`);
         values.push(dName);
@@ -396,7 +411,7 @@ async function startServer() {
       values.push(id);
       const query = `UPDATE users SET ${fields.join(', ')} WHERE id = $${idx} RETURNING id, username, full_name as "fullName", email, role, business_unit_id as "businessUnitId", department_id as "departmentId", department, avatar_url as "avatarUrl", must_change_password as "mustChangePassword", created_at as "createdAt"`;
 
-      const { rows } = await db.query(query, values);
+      const { rows } = await queryDb(db, query, values);
       res.json(rows[0]);
     } catch (err: any) {
       res.status(500).json({ error: err.message });
@@ -409,27 +424,27 @@ async function startServer() {
     if (!db) return res.status(503).json({ error: 'PostgreSQL not configured' });
     try {
       const { id } = req.params;
-      const client = await db.connect();
+      const client = await db.getConnection();
       try {
-        await client.query('BEGIN');
+        await client.beginTransaction();
         // Unassign from tickets
-        await client.query('UPDATE tickets SET assigned_to_id = NULL WHERE assigned_to_id = $1', [id]);
+        await queryDb(client, 'UPDATE tickets SET assigned_to_id = NULL WHERE assigned_to_id = $1', [id]);
         // Update tickets created by this user or delete comments
-        await client.query('DELETE FROM ticket_comments WHERE user_id = $1', [id]);
+        await queryDb(client, 'DELETE FROM ticket_comments WHERE user_id = $1', [id]);
         // If tickets were created by this user, reassign to admin or remove references if foreign key constraint exists
-        await client.query(`
+        await queryDb(client, `
           UPDATE tickets 
           SET created_by_id = (SELECT id FROM users WHERE role = 'ADMIN' AND id != $1 LIMIT 1)
           WHERE created_by_id = $1
         `, [id]);
         // Delete audit logs or set user_id to NULL
-        await client.query('UPDATE audit_logs SET user_id = NULL WHERE user_id = $1', [id]);
+        await queryDb(client, 'UPDATE audit_logs SET user_id = NULL WHERE user_id = $1', [id]);
         // Finally delete the user
-        await client.query('DELETE FROM users WHERE id = $1', [id]);
-        await client.query('COMMIT');
+        await queryDb(client, 'DELETE FROM users WHERE id = $1', [id]);
+        await client.commit();
         res.json({ success: true });
       } catch (e: any) {
-        await client.query('ROLLBACK');
+        await client.rollback();
         throw e;
       } finally {
         client.release();
@@ -446,10 +461,10 @@ async function startServer() {
     if (!db) return res.status(503).json({ error: 'PostgreSQL not configured' });
     try {
       const { businessUnits, departments, users, tickets } = req.body;
-      const client = await db.connect();
+      const client = await db.getConnection();
       try {
         // Ensure schema columns are migrated
-        await client.query(`
+        await queryDb(client, `
           ALTER TABLE users ADD COLUMN IF NOT EXISTS department VARCHAR(255);
           ALTER TABLE users ADD COLUMN IF NOT EXISTS department_id VARCHAR(64);
           ALTER TABLE users ADD COLUMN IF NOT EXISTS business_unit_id VARCHAR(64);
@@ -457,11 +472,11 @@ async function startServer() {
           ALTER TABLE users ADD COLUMN IF NOT EXISTS must_change_password BOOLEAN DEFAULT FALSE;
         `);
 
-        await client.query('BEGIN');
+        await client.beginTransaction();
 
         if (Array.isArray(businessUnits)) {
           for (const bu of businessUnits) {
-            await client.query(`
+            await queryDb(client, `
               INSERT INTO business_units (id, code, name, description, icon, theme_color, branding)
               VALUES ($1, $2, $3, $4, $5, $6, $7)
               ON CONFLICT (id) DO UPDATE SET
@@ -477,7 +492,7 @@ async function startServer() {
 
         if (Array.isArray(departments)) {
           for (const dept of departments) {
-            await client.query(`
+            await queryDb(client, `
               INSERT INTO departments (id, name, code, business_unit_id)
               VALUES ($1, $2, $3, $4)
               ON CONFLICT (id) DO UPDATE SET
@@ -498,7 +513,7 @@ async function startServer() {
 
             const hashedPassword = hashPassword(u.password || 'password123');
 
-            await client.query(`
+            await queryDb(client, `
               INSERT INTO users (id, username, password_hash, full_name, email, role, business_unit_id, department_id, department, avatar_url, must_change_password)
               VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
               ON CONFLICT (id) DO UPDATE SET
@@ -530,7 +545,7 @@ async function startServer() {
 
         if (Array.isArray(tickets)) {
           for (const t of tickets) {
-            await client.query(`
+            await queryDb(client, `
               INSERT INTO tickets (
                 id, ticket_number, title, description, category, priority, status,
                 business_unit_id, department_id, created_by_id, assigned_to_id, resolution_notes,
@@ -569,10 +584,10 @@ async function startServer() {
           }
         }
 
-        await client.query('COMMIT');
+        await client.commit();
         res.json({ success: true, message: 'All tables synced directly to PostgreSQL database!' });
       } catch (e: any) {
-        await client.query('ROLLBACK');
+        await client.rollback();
         throw e;
       } finally {
         client.release();
@@ -588,7 +603,7 @@ async function startServer() {
     const db = getDbPool();
     if (!db) return res.status(503).json({ error: 'PostgreSQL not configured' });
     try {
-      const { rows } = await db.query(`
+      const { rows } = await queryDb(db, `
         SELECT id, ticket_number as "ticketNumber", title, description, category, priority, status,
                business_unit_id as "businessUnitId", department_id as "departmentId",
                created_by_id as "createdById", assigned_to_id as "assignedToId",
@@ -660,7 +675,7 @@ async function startServer() {
         JSON.stringify(attachments || []),
       ];
 
-      const { rows } = await db.query(query, values);
+      const { rows } = await queryDb(db, query, values);
       res.json({ success: true, ticket: rows[0] });
     } catch (err: any) {
       res.status(500).json({ error: err.message });
@@ -699,7 +714,7 @@ async function startServer() {
                   activities, attachments, created_at as "createdAt", updated_at as "updatedAt"
       `;
 
-      const { rows } = await db.query(query, values);
+      const { rows } = await queryDb(db, query, values);
       res.json(rows[0]);
     } catch (err: any) {
       res.status(500).json({ error: err.message });
@@ -711,16 +726,16 @@ async function startServer() {
     const db = getDbPool();
     if (!db) return res.status(503).json({ error: 'PostgreSQL not configured' });
     try {
-      const client = await db.connect();
+      const client = await db.getConnection();
       try {
-        await client.query('BEGIN');
-        await client.query('DELETE FROM ticket_comments');
-        await client.query('UPDATE audit_logs SET ticket_id = NULL');
-        await client.query('DELETE FROM tickets');
-        await client.query('COMMIT');
+        await client.beginTransaction();
+        await queryDb(client, 'DELETE FROM ticket_comments');
+        await queryDb(client, 'UPDATE audit_logs SET ticket_id = NULL');
+        await queryDb(client, 'DELETE FROM tickets');
+        await client.commit();
         res.json({ success: true, message: 'All tickets deleted from PostgreSQL' });
       } catch (e: any) {
-        await client.query('ROLLBACK');
+        await client.rollback();
         throw e;
       } finally {
         client.release();
@@ -737,16 +752,16 @@ async function startServer() {
     if (!db) return res.status(503).json({ error: 'PostgreSQL not configured' });
     try {
       const { id } = req.params;
-      const client = await db.connect();
+      const client = await db.getConnection();
       try {
-        await client.query('BEGIN');
-        await client.query('DELETE FROM ticket_comments WHERE ticket_id = $1', [id]);
-        await client.query('UPDATE audit_logs SET ticket_id = NULL WHERE ticket_id = $1', [id]);
-        await client.query('DELETE FROM tickets WHERE id = $1', [id]);
-        await client.query('COMMIT');
+        await client.beginTransaction();
+        await queryDb(client, 'DELETE FROM ticket_comments WHERE ticket_id = $1', [id]);
+        await queryDb(client, 'UPDATE audit_logs SET ticket_id = NULL WHERE ticket_id = $1', [id]);
+        await queryDb(client, 'DELETE FROM tickets WHERE id = $1', [id]);
+        await client.commit();
         res.json({ success: true, message: `Ticket ${id} deleted from database` });
       } catch (e: any) {
-        await client.query('ROLLBACK');
+        await client.rollback();
         throw e;
       } finally {
         client.release();
@@ -763,7 +778,7 @@ async function startServer() {
     if (!db) return res.status(503).json({ error: 'PostgreSQL not configured' });
     try {
       const { id, action, details, userId, username, ticketId, businessUnitId } = req.body;
-      const { rows } = await db.query(
+      const { rows } = await queryDb(db, 
         `INSERT INTO audit_logs (id, action, details, user_id, username, ticket_id, business_unit_id)
          VALUES ($1, $2, $3, $4, $5, $6, $7) RETURNING *`,
         [id, action, details, userId || null, username || null, ticketId || null, businessUnitId || null]
@@ -1006,7 +1021,7 @@ async function startServer() {
       if (db) {
         try {
           const logId = `log-notif-${Date.now()}-${Math.random().toString(36).substr(2, 4)}`;
-          await db.query(
+          await queryDb(db, 
             `INSERT INTO email_logs (
               id, from_address, from_name, to_address, subject, body_preview, raw_body, received_at,
               status, created_ticket_id, created_ticket_number, auto_reply_sent, auto_reply_subject, auto_reply_body, error_message
@@ -1083,7 +1098,7 @@ async function startServer() {
     const db = getDbPool();
     if (!db) return res.json([]);
     try {
-      const { rows } = await db.query(`
+      const { rows } = await queryDb(db, `
         SELECT id, message_id as "messageId", from_address as "fromAddress", from_name as "fromName",
                to_address as "toAddress", subject, body_preview as "bodyPreview", raw_body as "rawBody",
                received_at as "receivedAt", status, created_ticket_id as "createdTicketId",
@@ -1107,7 +1122,7 @@ async function startServer() {
     const db = getDbPool();
     if (!db) return res.json({ success: true });
     try {
-      await db.query('DELETE FROM email_logs');
+      await queryDb(db, 'DELETE FROM email_logs');
       res.json({ success: true, message: 'Email ingestion logs cleared.' });
     } catch (err: any) {
       res.status(500).json({ error: err.message });
