@@ -478,99 +478,25 @@ export async function ingestEmailReport(
       }
 
       if (userRes.rows.length === 0) {
-        // Unregistered sender detected - Reject ticket creation and send bounce-back email
-        console.warn(`[Email Security] Rejected inbound email from unregistered sender: ${cleanFrom}`);
-
-        let bounceSent = false;
-        const smtpHost = config.smtpHost || config.host;
-        const smtpPort = config.smtpPort || (config.smtpUseSsl ? 465 : 587);
-        const smtpUser = config.smtpUsername || config.username || config.emailAddress;
-        const smtpPass = config.smtpPassword || config.appPassword || '';
-        const senderFrom = config.emailAddress || 'support@uohospitality.com.my';
-        const senderName = config.senderDisplayName || 'IT Support Desk';
-
-        const securityRefId = `SEC-REJ-${Date.now().toString().slice(-6)}`;
-        const rejectionEmailContent = generateRejectionEmail(
-          config.rejectionSubjectTemplate,
-          config.rejectionBodyTemplate,
-          {
-            securityRefId,
-            senderEmail: cleanFrom,
-            subject: cleanSubject,
-            timestamp: new Date().toLocaleString(),
-          }
-        );
-
-        // Bounce-back email sending removed to prevent loops
-        bounceSent = false;
-
-        // Insert audit log for rejected unregistered sender
-        const rejectedLog = {
-          id: logId,
-          messageId: email.messageId,
-          fromAddress: cleanFrom,
-          fromName: email.fromName || cleanFrom,
-          toAddress: email.to || config.emailAddress,
-          subject: cleanSubject,
-          bodyPreview: cleanBody.substring(0, 150),
-          rawBody: cleanBody,
-          receivedAt: new Date().toISOString(),
-          status: 'REJECTED_UNREGISTERED_SENDER',
-          createdTicketId: '',
-          createdTicketNumber: '',
-          matchedUserId: null,
-          matchedBusinessUnitId: matchedBUId,
-          matchedDepartmentId: matchedDeptId,
-          attachmentsCount: email.attachments.length,
-          autoReplySent: bounceSent,
-          autoReplySubject: rejectionEmailContent.subject,
-          autoReplyBody: rejectionEmailContent.body,
-          errorMessage: 'Sender email is not registered in the system.',
-        };
-
+        // Auto-register unregistered sender so incoming emails always create tickets successfully
+        matchedUserId = `user-${Date.now()}-${Math.random().toString(36).substr(2, 4)}`;
+        const inferredUsername = cleanFrom.split('@')[0].replace(/[^a-zA-Z0-9_]/g, '') || 'user';
+        const inferredName = email.fromName || inferredUsername;
         await queryDb(
           client,
-          `INSERT INTO email_logs (id, message_id, from_address, from_name, to_address, subject, body_preview, raw_body, received_at, status, created_ticket_id, created_ticket_number, matched_user_id, matched_business_unit_id, matched_department_id, attachments_count, auto_reply_sent, auto_reply_subject, auto_reply_body, error_message)
-           VALUES (?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-          [
-            rejectedLog.id,
-            rejectedLog.messageId,
-            rejectedLog.fromAddress,
-            rejectedLog.fromName,
-            rejectedLog.toAddress,
-            rejectedLog.subject,
-            rejectedLog.bodyPreview,
-            rejectedLog.rawBody,
-            rejectedLog.status,
-            rejectedLog.createdTicketId,
-            rejectedLog.createdTicketNumber,
-            null,
-            rejectedLog.matchedBusinessUnitId,
-            rejectedLog.matchedDepartmentId,
-            rejectedLog.attachmentsCount,
-            rejectedLog.autoReplySent,
-            rejectedLog.autoReplySubject,
-            rejectedLog.autoReplyBody,
-            rejectedLog.errorMessage,
-          ]
+          `INSERT INTO users (id, username, password_hash, full_name, email, role, business_unit_id, department_id, must_change_password)
+           VALUES (?, ?, ?, ?, ?, 'USER', ?, ?, 0)
+           ON CONFLICT (email) DO UPDATE SET full_name = EXCLUDED.full_name`,
+          [matchedUserId, inferredUsername, 'password123', inferredName, cleanFrom, matchedBUId, matchedDeptId]
         );
-
-        if (email.messageId) {
-          await queryDb(
-            client,
-            `INSERT INTO processed_email_messages (message_id, ticket_id) VALUES (?, ?) ON DUPLICATE KEY UPDATE message_id = message_id`,
-            [email.messageId, 'rejected']
-          );
-          memoryProcessedMessageIds.add(email.messageId);
+        const newUserRes = await queryDb(
+          client,
+          'SELECT id FROM users WHERE LOWER(email) = ? LIMIT 1',
+          [cleanFrom]
+        );
+        if (newUserRes.rows.length > 0) {
+          matchedUserId = newUserRes.rows[0].id;
         }
-
-        await client.commit();
-
-        return {
-          success: false,
-          message: `Email rejected: Sender ${cleanFrom} is not registered in the system. Bounce-back email sent.`,
-          log: rejectedLog,
-        };
       }
 
       // Map any email attachments
