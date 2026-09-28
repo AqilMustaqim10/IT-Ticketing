@@ -73,28 +73,28 @@ export interface ServerPop3Config {
 }
 
 export const DEFAULT_SERVER_EMAIL_CONFIG: ServerPop3Config = {
-  enabled: true,
+  enabled: false,
   provider: 'COMPANY_POP3',
-  companyDomain: 'uohospitality.com.my',
-  host: 'mail.uohospitality.com.my',
+  companyDomain: 'dummy-helpdesk.local',
+  host: 'mail.dummy-helpdesk.local',
   port: 995,
   useSsl: true,
-  emailAddress: 'ticket.support@uohospitality.com.my',
-  username: 'ticket.support@uohospitality.com.my',
+  emailAddress: 'support@dummy-helpdesk.local',
+  username: 'support@dummy-helpdesk.local',
   appPassword: '',
-  smtpEnabled: true,
-  smtpHost: 'smtp.uohospitality.com.my',
+  smtpEnabled: false,
+  smtpHost: 'smtp.dummy-helpdesk.local',
   smtpPort: 587,
   smtpUseSsl: false,
-  smtpUsername: 'ticket.support@uohospitality.com.my',
+  smtpUsername: 'support@dummy-helpdesk.local',
   smtpPassword: '',
-  senderDisplayName: 'UOH Hospitality Support Desk',
-  pollIntervalMinutes: 3,
+  senderDisplayName: 'Dummy IT Support Desk',
+  pollIntervalMinutes: 5,
   targetBusinessUnitId: 'bu-ccec',
   autoAssignCategory: true,
   autoExtractPriority: true,
   leaveCopyOnServer: true,
-  enableAutoReply: true,
+  enableAutoReply: false,
   autoReplySubjectTemplate: '[{ticketNumber}] Received: {ticketTitle}',
   autoReplyBodyTemplate:
     'Hi {requesterName},\n\nThank you for submitting your issue to IT Support. Ticket [{ticketNumber}] has been created.\n\nSummary:\n• Ticket: [{ticketNumber}]\n• Subject: {ticketTitle}\n• Business Unit: {businessUnitName}\n• Priority: {priority}\n\nOur team is reviewing your report.\n\nBest regards,\nIT Service Desk',
@@ -394,6 +394,25 @@ export async function ingestEmailReport(
   // Extract strictly the problem description, stripping signatures, greetings, mobile tags, and corporate disclaimers
   const cleanBody = (email.problemContent || extractProblemContent(email.textBody || email.htmlBody || '')).trim() || '(No problem description provided)';
 
+  // Loop prevention: ignore own email address, mailer-daemon, postmaster, or rejection notices
+  const ourEmail = (config.emailAddress || '').toLowerCase().trim();
+  if (
+    cleanFrom === ourEmail ||
+    cleanFrom.includes('mailer-daemon') ||
+    cleanFrom.includes('postmaster') ||
+    cleanFrom.includes('noreply') ||
+    cleanFrom.includes('no-reply') ||
+    /ticket\s+creation\s+rejected/i.test(cleanSubject) ||
+    /delivery\s+status\s+notification/i.test(cleanSubject) ||
+    /undelivered\s+mail/i.test(cleanSubject)
+  ) {
+    return {
+      success: true,
+      message: `Ignored system bounce / loop-back email from ${cleanFrom}`,
+      log: null,
+    };
+  }
+
   // Avoid duplicate ingestion
   if (email.messageId && memoryProcessedMessageIds.has(email.messageId)) {
     return {
@@ -482,26 +501,8 @@ export async function ingestEmailReport(
           }
         );
 
-        if (smtpHost && cleanFrom) {
-          try {
-            await sendSmtpEmail({
-              host: smtpHost,
-              port: smtpPort,
-              useSsl: config.smtpUseSsl !== undefined ? config.smtpUseSsl : (smtpPort === 465),
-              username: smtpUser,
-              password: smtpPass,
-              from: senderFrom,
-              fromName: senderName,
-              to: cleanFrom,
-              subject: rejectionEmailContent.subject,
-              body: rejectionEmailContent.body,
-              timeoutMs: 15000,
-            });
-            bounceSent = true;
-          } catch (bounceErr: any) {
-            console.error('Failed to send rejection bounce-back email:', bounceErr.message);
-          }
-        }
+        // Bounce-back email sending removed to prevent loops
+        bounceSent = false;
 
         // Insert audit log for rejected unregistered sender
         const rejectedLog = {
