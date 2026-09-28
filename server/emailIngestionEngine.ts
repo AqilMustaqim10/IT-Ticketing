@@ -6,23 +6,39 @@
  * and runs automated background mailbox polling.
  */
 
-import mysql from 'mysql2/promise';
+import { Pool, PoolClient } from 'pg';
 import { GoogleGenAI } from "@google/genai";
 import { ParsedEmail, ParsedEmailAttachment, extractProblemContent } from './emailParser';
 import { fetchPop3Emails, testPop3Mailbox, Pop3Options } from './pop3Client';
 import { sendSmtpEmail } from './smtpClient';
 
-function convertSqlForMySQL(sql: string): string {
-  let converted = sql.replace(/\$\d+/g, '?');
-  converted = converted.replace(/ON CONFLICT\s*\([^)]+\)\s*DO UPDATE SET/gi, 'ON DUPLICATE KEY UPDATE');
-  converted = converted.replace(/EXCLUDED\.([a-zA-Z0-9_]+)/g, 'VALUES($1)');
+async function getDbClient(pool: Pool) {
+  const client = await pool.connect();
+  return Object.assign(client, {
+    beginTransaction: async () => { await client.query('BEGIN'); },
+    commit: async () => { await client.query('COMMIT'); },
+    rollback: async () => { await client.query('ROLLBACK'); },
+  });
+}
+
+function ensurePgPool(pool: Pool) {
+  if (pool && !(pool as any).getConnection) {
+    (pool as any).getConnection = async () => getDbClient(pool);
+  }
+  return pool;
+}
+
+function convertSqlForPostgres(sql: string): string {
+  let paramIdx = 1;
+  let converted = sql.replace(/\?/g, () => `$${paramIdx++}`);
+  converted = converted.replace(/ON DUPLICATE KEY UPDATE/gi, 'ON CONFLICT (message_id) DO UPDATE SET');
   return converted;
 }
 
-async function queryDb(db: mysql.Pool | mysql.PoolConnection, sql: string, params: any[] = []): Promise<{ rows: any[] }> {
-  const mysqlSql = convertSqlForMySQL(sql);
-  const [rows] = await db.query(mysqlSql, params);
-  return { rows: Array.isArray(rows) ? rows : [rows] };
+async function queryDb(db: Pool | PoolClient, sql: string, params: any[] = []): Promise<{ rows: any[] }> {
+  const pgSql = convertSqlForPostgres(sql);
+  const result = await db.query(pgSql, params);
+  return { rows: result.rows };
 }
 
 export interface ServerPop3Config {
@@ -95,8 +111,9 @@ let currentConfig: ServerPop3Config = { ...DEFAULT_SERVER_EMAIL_CONFIG };
 /**
  * Initializes email tables in MySQL if connected
  */
-export async function initEmailTables(pool: mysql.Pool) {
+export async function initEmailTables(pool: Pool) {
   try {
+    ensurePgPool(pool);
     const client = await pool.getConnection();
     try {
       // Load saved config if present
@@ -112,7 +129,7 @@ export async function initEmailTables(pool: mysql.Pool) {
         memoryProcessedMessageIds.add(row.message_id);
       }
 
-      console.log('Email Ingestion MySQL tables verified and synced.');
+      console.log('Email Ingestion PostgreSQL tables verified and synced.');
     } finally {
       client.release();
     }
@@ -131,20 +148,21 @@ export function getEmailConfig(): ServerPop3Config {
 /**
  * Saves POP3 configuration and reconfigures auto-poller
  */
-export async function saveEmailConfig(pool: mysql.Pool | null, newConfig: Partial<ServerPop3Config>): Promise<ServerPop3Config> {
+export async function saveEmailConfig(pool: Pool | null, newConfig: Partial<ServerPop3Config>): Promise<ServerPop3Config> {
   currentConfig = { ...currentConfig, ...newConfig };
 
   if (pool) {
+    ensurePgPool(pool);
     try {
       await queryDb(
         pool,
         `INSERT INTO email_config (id, config, updated_at)
          VALUES (?, ?, CURRENT_TIMESTAMP)
-         ON DUPLICATE KEY UPDATE config = VALUES(config), updated_at = CURRENT_TIMESTAMP`,
+         ON CONFLICT (id) DO UPDATE SET config = EXCLUDED.config, updated_at = CURRENT_TIMESTAMP`,
         ['primary_mailbox', JSON.stringify(currentConfig)]
       );
     } catch (err: any) {
-      console.error('Failed to save email config to MySQL:', err.message);
+      console.error('Failed to save email config to PostgreSQL:', err.message);
     }
   }
 

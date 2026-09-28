@@ -4,7 +4,7 @@ import fs from 'fs';
 import os from 'os';
 import crypto from 'crypto';
 import { createServer as createViteServer } from 'vite';
-import mysql from 'mysql2/promise';
+import { Pool, PoolClient } from 'pg';
 import dotenv from 'dotenv';
 import { testPop3Mailbox } from './server/pop3Client';
 import { testSmtpServer, sendSmtpEmail } from './server/smtpClient';
@@ -21,42 +21,45 @@ import { parseRawEmail, extractProblemContent } from './server/emailParser';
 
 dotenv.config();
 
-// Lazy MySQL connection pool (compatible with phpMyAdmin / cPanel / local MySQL)
-let pool: mysql.Pool | null = null;
+let pool: Pool | null = null;
 
-function getDbPool(): mysql.Pool | null {
-  const host = process.env.DB_HOST || 'localhost';
-  const database = process.env.DB_NAME || 'it_helpdesk';
-  if (!host && !database) {
-    return null;
-  }
+function getDbPool(): Pool | null {
+  const connectionString = process.env.DATABASE_URL || 'postgresql://postgres:password123@localhost:5432/uoa_helpdesk_db';
   if (!pool) {
-    pool = mysql.createPool({
-      host: process.env.DB_HOST || 'localhost',
-      port: Number(process.env.DB_PORT) || 3306,
-      user: process.env.DB_USER || 'root',
-      password: process.env.DB_PASSWORD || '',
-      database: process.env.DB_NAME || 'it_helpdesk',
-      waitForConnections: true,
-      connectionLimit: 10,
-      queueLimit: 0,
+    pool = new Pool({
+      connectionString,
     });
   }
   return pool;
 }
 
-function convertSqlForMySQL(sql: string): string {
-  let converted = sql.replace(/\$\d+/g, '?');
-  converted = converted.replace(/ON CONFLICT\s*\([^)]+\)\s*DO UPDATE SET/gi, 'ON DUPLICATE KEY UPDATE');
-  converted = converted.replace(/EXCLUDED\.([a-zA-Z0-9_]+)/g, 'VALUES($1)');
+async function getDbClient(pool: Pool) {
+  const client = await pool.connect();
+  return Object.assign(client, {
+    beginTransaction: async () => { await client.query('BEGIN'); },
+    commit: async () => { await client.query('COMMIT'); },
+    rollback: async () => { await client.query('ROLLBACK'); },
+  });
+}
+
+function ensurePgPool(pool: Pool) {
+  if (pool && !(pool as any).getConnection) {
+    (pool as any).getConnection = async () => getDbClient(pool);
+  }
+  return pool;
+}
+
+function convertSqlForPostgres(sql: string): string {
+  let paramIdx = 1;
+  let converted = sql.replace(/\?/g, () => `$${paramIdx++}`);
+  converted = converted.replace(/ON DUPLICATE KEY UPDATE/gi, 'ON CONFLICT (id) DO UPDATE SET');
   return converted;
 }
 
-async function queryDb(db: mysql.Pool | mysql.PoolConnection, sql: string, params: any[] = []): Promise<{ rows: any[], rowCount?: number }> {
-  const mysqlSql = convertSqlForMySQL(sql);
-  const [result] = await db.query(mysqlSql, params);
-  const rows = Array.isArray(result) ? result : [result];
-  return { rows, rowCount: rows.length };
+async function queryDb(db: Pool | PoolClient, sql: string, params: any[] = []): Promise<{ rows: any[], rowCount?: number }> {
+  const pgSql = convertSqlForPostgres(sql);
+  const result = await db.query(pgSql, params);
+  return { rows: result.rows, rowCount: result.rowCount ?? result.rows.length };
 }
 
 function hashPassword(password: string): string {
@@ -69,11 +72,12 @@ function hashPassword(password: string): string {
 }
 
 /**
- * Initializes database tables and default data if they don't exist yet via MySQL/phpMyAdmin
+ * Initializes database tables and default data if they don't exist yet via PostgreSQL
  */
 async function autoInitDatabase() {
   const db = getDbPool();
   if (!db) return;
+  ensurePgPool(db);
   try {
     const connection = await db.getConnection();
     try {
@@ -93,7 +97,7 @@ async function autoInitDatabase() {
           }
         }
       }
-      console.log('MySQL schema and master data verified successfully via phpMyAdmin connection.');
+      console.log('PostgreSQL schema and master data verified successfully.');
 
       // Initialize email tables
       await initEmailTables(db);
@@ -101,7 +105,7 @@ async function autoInitDatabase() {
       connection.release();
     }
   } catch (err: any) {
-    console.error('MySQL autoInitDatabase notice:', err.message);
+    console.error('PostgreSQL autoInitDatabase notice:', err.message);
   }
 }
 
