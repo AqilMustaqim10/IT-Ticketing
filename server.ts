@@ -19,34 +19,21 @@ import {
 } from './server/emailIngestionEngine';
 import { parseRawEmail, extractProblemContent } from './server/emailParser';
 
+import { LocalPool } from './server/dbStorage';
+
 dotenv.config();
-
-let pool: Pool | null = null;
-
-function getDbPool(): Pool | null {
-  const connectionString = process.env.DATABASE_URL || 'postgresql://postgres:password123@localhost:5432/uoa_helpdesk_db';
+let pool: any = null;
+function getDbPool(): any {
   if (!pool) {
-    pool = new Pool({
-      connectionString,
-    });
+    pool = new LocalPool();
   }
   return pool;
 }
-
-async function getDbClient(pool: Pool) {
-  const client = await pool.connect();
-  return Object.assign(client, {
-    beginTransaction: async () => { await client.query('BEGIN'); },
-    commit: async () => { await client.query('COMMIT'); },
-    rollback: async () => { await client.query('ROLLBACK'); },
-  });
-}
-
-function ensurePgPool(pool: Pool) {
-  if (pool && !(pool as any).getConnection) {
-    (pool as any).getConnection = async () => getDbClient(pool);
+function ensurePgPool(p: any) {
+  if (p && !p.getConnection) {
+    p.getConnection = async () => p.connect();
   }
-  return pool;
+  return p;
 }
 
 function convertSqlForPostgres(sql: string): string {

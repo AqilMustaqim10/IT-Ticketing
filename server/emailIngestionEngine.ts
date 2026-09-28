@@ -114,7 +114,7 @@ let currentConfig: ServerPop3Config = { ...DEFAULT_SERVER_EMAIL_CONFIG };
 export async function initEmailTables(pool: Pool) {
   try {
     ensurePgPool(pool);
-    const client = await pool.getConnection();
+    const client = await (pool as any).getConnection();
     try {
       // Load saved config if present
       const res = await queryDb(client, 'SELECT config FROM email_config WHERE id = ?', ['primary_mailbox']);
@@ -378,7 +378,7 @@ export function generateRejectionEmail(
  * Ingests a single ParsedEmail into the Ticket Database
  */
 export async function ingestEmailReport(
-  pool: mysql.Pool | null,
+  pool: Pool | null,
   email: ParsedEmail,
   config: ServerPop3Config = currentConfig
 ): Promise<{
@@ -389,6 +389,15 @@ export async function ingestEmailReport(
   message: string;
   log: any;
 }> {
+  console.log('[EmailIngestionEngine] Processing inbound email header mapping:', {
+    messageId: email.messageId,
+    from: email.from,
+    fromName: email.fromName,
+    to: email.to,
+    subject: email.subject,
+    attachmentsCount: email.attachments?.length || 0,
+  });
+
   const cleanFrom = email.from.toLowerCase().trim();
   const cleanSubject = email.subject.trim();
   // Extract strictly the problem description, stripping signatures, greetings, mobile tags, and corporate disclaimers
@@ -431,7 +440,7 @@ export async function ingestEmailReport(
   let isReply = false;
 
   if (pool) {
-    const client = await pool.getConnection();
+    const client = await (pool as any).getConnection();
     try {
       await client.beginTransaction();
 
@@ -831,7 +840,7 @@ export async function ingestEmailReport(
  * Triggers a manual or automatic POP3 Mailbox Sync
  */
 export async function executePop3Sync(
-  pool: mysql.Pool | null,
+  pool: Pool | null,
   config: ServerPop3Config = currentConfig
 ): Promise<{
   success: boolean;
@@ -966,7 +975,7 @@ export async function executePop3Sync(
 /**
  * Starts the automated server-side POP3 Poller
  */
-export function startBackgroundEmailPoller(pool: mysql.Pool | null) {
+export function startBackgroundEmailPoller(pool: Pool | null) {
   if (activePollerTimer) {
     clearInterval(activePollerTimer);
     activePollerTimer = null;

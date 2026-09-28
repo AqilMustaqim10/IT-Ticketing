@@ -143,8 +143,18 @@ class StorageService {
    */
   public async loadFromPostgres(): Promise<boolean> {
     try {
+      console.log('[StorageService] loadFromPostgres: fetching data from Postgres/local bridge...');
       const data = await postgresBridge.fetchAllData();
-      if (!data) return false;
+      if (!data) {
+        console.warn('[StorageService] loadFromPostgres: no data returned from bridge.');
+        return false;
+      }
+      console.log('[StorageService] loadFromPostgres: fetched data summary:', {
+        businessUnits: data.businessUnits?.length || 0,
+        departments: data.departments?.length || 0,
+        users: data.users?.length || 0,
+        tickets: data.tickets?.length || 0,
+      });
 
       if (data.businessUnits && data.businessUnits.length > 0) {
         localStorage.setItem(STORAGE_KEYS.BUSINESS_UNITS, JSON.stringify(data.businessUnits));
@@ -166,8 +176,10 @@ class StorageService {
       if (data.tickets !== undefined) {
         localStorage.setItem(STORAGE_KEYS.TICKETS, JSON.stringify(data.tickets));
       }
+      console.log('[StorageService] loadFromPostgres: successfully synchronized local cache with database tables.');
       return true;
-    } catch {
+    } catch (err: any) {
+      console.error('[StorageService] loadFromPostgres error:', err?.message || err);
       return false;
     }
   }
