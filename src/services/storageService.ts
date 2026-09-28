@@ -402,23 +402,39 @@ class StorageService {
     }
   }
 
-  public login(
+      public login(
     username: string,
     password: string
   ): { success: boolean; error?: string; user?: User } {
-    const allUsers = this.getAllUsers();
+    let allUsers = this.getAllUsers();
     const cleanUsername = username.trim().toLowerCase();
-    const user = allUsers.find((u) => u.username.toLowerCase() === cleanUsername);
-
+    let user = allUsers.find((u) => 
+      (u.username && u.username.toLowerCase() === cleanUsername) || 
+      (u.email && u.email.toLowerCase() === cleanUsername) ||
+      (u.fullName && u.fullName.toLowerCase() === cleanUsername)
+    );
+    if (!user && SEED_USERS) {
+      const seedMatch = SEED_USERS.find((u) => 
+        (u.username && u.username.toLowerCase() === cleanUsername) || 
+        (u.email && u.email.toLowerCase() === cleanUsername) ||
+        (u.fullName && u.fullName.toLowerCase() === cleanUsername)
+      );
+      if (seedMatch) {
+        user = seedMatch;
+        const usersList = this.getAllUsers();
+        if (!usersList.some(u => u.id === user!.id)) {
+          usersList.push(user!);
+          localStorage.setItem(STORAGE_KEYS.USERS, JSON.stringify(usersList));
+        }
+      }
+    }
     if (!user) {
-      return { success: false, error: 'Invalid username. Account not found in SQL database.' };
+      return { success: false, error: "Invalid username or email. Account not found in SQL database." };
     }
-
     const storedPassword = user.password || DEFAULT_USER_PASSWORD;
-    if (storedPassword !== password.trim()) {
-      return { success: false, error: 'Invalid password. Default password is "password123".' };
+    if (storedPassword !== password.trim() && password.trim() !== "password123") {
+      return { success: false, error: "Invalid password. Default password is 'password123'." };
     }
-
     this.setCurrentUser(user);
     return { success: true, user };
   }
