@@ -24,22 +24,38 @@ export interface DbFullPayload {
 
 export const postgresBridge = {
   /**
-   * Check connection status to PostgreSQL
+   * Check connection status to PostgreSQL with detailed handshake and CORS diagnostics
    */
   checkStatus: async (): Promise<DbStatus> => {
     try {
       const res = await fetch('/api/db/status');
-      if (!res.ok) {
-        return { connected: false, mode: 'localStorage', error: `HTTP ${res.status}` };
+      const data = await res.json().catch((parseErr) => {
+        console.error('❌ [PostgreSQL Bridge] Failed to parse /api/db/status JSON response (possible CORS policy restriction, network timeout, or HTML error page):', parseErr);
+        return null;
+      });
+      if (!res.ok || !data) {
+        console.error('❌ [PostgreSQL Bridge] Database status check HTTP error:', {
+          status: res.status,
+          statusText: res.statusText,
+          responsePayload: data,
+          hint: 'Verify if backend server is running and DATABASE_URL is configured correctly.',
+        });
+        return { connected: false, mode: 'localStorage', error: `HTTP ${res.status}: ${res.statusText}` };
       }
-      return await res.json();
+      return data;
     } catch (err: any) {
+      console.error('❌ [PostgreSQL Bridge] Database connection handshake network/CORS error on /api/db/status:', {
+        message: err.message,
+        name: err.name,
+        stack: err.stack,
+        diagnosis: 'Network request failed. Check if DATABASE_URL is reachable, firewall settings, or CORS configuration.',
+      });
       return { connected: false, mode: 'localStorage', error: err.message };
     }
   },
 
   /**
-   * Authenticate user against PostgreSQL backend API
+   * Authenticate user against PostgreSQL backend API with detailed handshake & CORS error diagnostics
    */
   login: async (username: string, password: string): Promise<{ success: boolean; error?: string; user?: User }> => {
     try {
@@ -48,13 +64,29 @@ export const postgresBridge = {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ username, password }),
       });
-      const data = await res.json();
-      if (!res.ok) {
-        return { success: false, error: data.error || 'Authentication failed' };
+      const data = await res.json().catch((parseErr) => {
+        console.error('❌ [PostgreSQL Bridge] Login endpoint JSON parse error (CORS policy issue, network drop, or server crash):', parseErr);
+        return null;
+      });
+      if (!res.ok || !data) {
+        console.error('❌ [PostgreSQL Bridge] PostgreSQL login request failed:', {
+          status: res.status,
+          statusText: res.statusText,
+          errorResponse: data,
+          diagnosis: 'Server responded with an error or invalid JSON during user authentication.',
+        });
+        return { success: false, error: data?.error || `Authentication failed (HTTP ${res.status})` };
       }
       return data;
     } catch (err: any) {
-      return { success: false, error: err.message || 'Database connection error' };
+      console.error('❌ [PostgreSQL Bridge] PostgreSQL login network/CORS/handshake error:', {
+        message: err.message,
+        name: err.name,
+        stack: err.stack,
+        url: '/api/db/users/login',
+        diagnosis: 'Network failure or CORS restriction connecting to DATABASE_URL backend route.',
+      });
+      return { success: false, error: err.message || 'Database connection error / network failure' };
     }
   },
 

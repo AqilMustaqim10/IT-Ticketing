@@ -50,11 +50,29 @@ export const TopBar: React.FC<TopBarProps> = ({
   const currentBU = businessUnits.find((b) => b.id === activeBUId);
   const theme = getBUTheme(currentBU, businessUnits);
 
+  const [dbHealthState, setDbHealthState] = useState<'Connecting' | 'Online' | 'Error'>('Connecting');
   const [dbStatus, setDbStatus] = useState<DbStatus | null>(null);
   const [syncing, setSyncing] = useState(false);
 
+  const checkDbHealth = async () => {
+    setDbHealthState('Connecting');
+    try {
+      const status = await postgresBridge.checkStatus();
+      setDbStatus(status);
+      if (status && status.connected) {
+        setDbHealthState('Online');
+      } else {
+        setDbHealthState('Error');
+      }
+    } catch {
+      setDbHealthState('Error');
+    }
+  };
+
   useEffect(() => {
-    postgresBridge.checkStatus().then(setDbStatus);
+    checkDbHealth();
+    const interval = setInterval(checkDbHealth, 30000);
+    return () => clearInterval(interval);
   }, []);
 
   const handleBUChange = (newBuId: string) => {
@@ -166,22 +184,44 @@ export const TopBar: React.FC<TopBarProps> = ({
           <span className="hidden sm:inline">Share</span>
         </button>
 
-        {/* DB Connection Indicator for Admins & IT */}
-        {currentUser.role !== 'USER' && (
-          <div className="hidden sm:flex items-center space-x-1.5 px-2 py-1 rounded-md text-[11px] bg-slate-50 dark:bg-slate-800/80 border border-slate-200/70 dark:border-slate-700 text-slate-600 dark:text-slate-300">
-            <Database className={`w-3 h-3 ${dbStatus?.connected ? 'text-emerald-600 dark:text-emerald-400' : 'text-slate-400'}`} />
-            <span className="font-mono text-[10px]">{dbStatus?.connected ? 'PostgreSQL' : 'Local'}</span>
-            <button
-              id="topbar-btn-sync-db"
-              onClick={handleSyncToPostgres}
-              disabled={syncing}
-              title="Sync current records with database"
-              className="p-0.5 ml-0.5 text-slate-400 hover:text-slate-700 dark:hover:text-slate-200 rounded hover:bg-slate-200 dark:hover:bg-slate-700 transition cursor-pointer"
-            >
-              <RefreshCw className={`w-2.5 h-2.5 ${syncing ? 'animate-spin text-blue-600 dark:text-blue-400' : ''}`} />
-            </button>
+        {/* Visual Database Connection Status Indicator */}
+        <div
+          id="topbar-db-connection-status"
+          onClick={checkDbHealth}
+          className="flex items-center space-x-1.5 px-2.5 py-1 rounded-lg text-xs font-medium bg-slate-50 dark:bg-slate-800/80 border border-slate-200/80 dark:border-slate-700 text-slate-700 dark:text-slate-200 cursor-pointer transition hover:bg-slate-100 dark:hover:bg-slate-800 shadow-2xs"
+          title={`Database Connection: ${dbHealthState} ${dbStatus?.database ? '(' + dbStatus.database + ')' : ''}. Click to re-check.`}
+        >
+          <div className="relative flex items-center justify-center w-2 h-2">
+            {dbHealthState === 'Online' && (
+              <>
+                <span className="absolute w-2 h-2 rounded-full bg-emerald-500 animate-ping opacity-75" />
+                <span className="relative w-2 h-2 rounded-full bg-emerald-600" />
+              </>
+            )}
+            {dbHealthState === 'Connecting' && (
+              <span className="relative w-2 h-2 rounded-full bg-amber-500 animate-pulse" />
+            )}
+            {dbHealthState === 'Error' && (
+              <span className="relative w-2 h-2 rounded-full bg-rose-500" />
+            )}
           </div>
-        )}
+          <Database className="w-3.5 h-3.5 text-slate-500 dark:text-slate-400 ml-0.5" />
+          <span className="font-semibold inline">
+            {dbHealthState}
+          </span>
+          <button
+            id="topbar-btn-sync-db"
+            onClick={(e) => {
+              e.stopPropagation();
+              handleSyncToPostgres();
+            }}
+            disabled={syncing}
+            title="Sync records with database"
+            className="p-0.5 ml-1 text-slate-400 hover:text-slate-700 dark:hover:text-slate-200 rounded hover:bg-slate-200 dark:hover:bg-slate-700 transition cursor-pointer"
+          >
+            <RefreshCw className={`w-3 h-3 ${syncing ? 'animate-spin text-blue-600 dark:text-blue-400' : ''}`} />
+          </button>
+        </div>
 
         {currentUser.role !== 'USER' && (
           <button

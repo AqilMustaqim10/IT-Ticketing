@@ -17,7 +17,7 @@ import {
 import { User, BusinessUnit } from '../types';
 
 interface LoginScreenProps {
-  onLogin: (userOrUsername: User | string, password?: string) => { success: boolean; error?: string; user?: User } | void;
+  onLogin: (userOrUsername: User | string, password?: string) => Promise<{ success: boolean; error?: string; user?: User } | void> | { success: boolean; error?: string; user?: User } | void;
   businessUnits: BusinessUnit[];
   allUsers?: User[];
   onResetSeedData?: () => void;
@@ -32,7 +32,7 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(false);
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setErrorMessage(null);
 
@@ -51,12 +51,70 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({
 
     setIsLoading(true);
     try {
-      const result = onLogin(cleanUsername, cleanPassword);
+      const result = await onLogin(cleanUsername, cleanPassword);
       if (result && !result.success) {
         setErrorMessage(result.error || 'Invalid credentials. Please check your username and password.');
+
+        // Diagnostic utility: output detailed PostgreSQL connection handshake, CORS, and DATABASE_URL accessibility diagnostics
+        try {
+          console.group('🔍 [IT Helpdesk Diagnostic Utility] Login Failed - Detailed PostgreSQL Diagnostics');
+          console.log('Attempted Username / Identifier:', cleanUsername);
+          console.log('Failure Reason:', result.error);
+          console.log('Timestamp:', new Date().toISOString());
+
+          console.info('🛠️ Checking PostgreSQL database status endpoint (/api/db/status)...');
+          let statusRes: Response | null = null;
+          let statusData: any = null;
+          try {
+            statusRes = await fetch('/api/db/status');
+            statusData = await statusRes.json();
+          } catch (netErr: any) {
+            console.error('❌ [Diagnostic] Network/CORS/Handshake failure contacting /api/db/status:', {
+              errorName: netErr.name,
+              errorMessage: netErr.message,
+              possibleCause: 'CORS policy restriction, proxy timeout, or server unavailable (DATABASE_URL unreachable).',
+            });
+          }
+
+          console.log('Database Status Handshake Result:', {
+            httpStatus: statusRes?.status,
+            ok: statusRes?.ok,
+            connected: statusData?.connected,
+            mode: statusData?.mode,
+            database: statusData?.database,
+            dbError: statusData?.error || statusData?.message,
+          });
+
+          console.info('🛠️ Checking PostgreSQL database payload sync endpoint (/api/db/all)...');
+          let allDataRes: Response | null = null;
+          let allData: any = null;
+          try {
+            allDataRes = await fetch('/api/db/all');
+            allData = await allDataRes.json();
+          } catch (netErr: any) {
+            console.error('❌ [Diagnostic] Network/CORS/Handshake failure contacting /api/db/all:', {
+              errorName: netErr.name,
+              errorMessage: netErr.message,
+            });
+          }
+
+          console.log('Database Connectivity & Payload Diagnostic:', {
+            httpStatus: allDataRes?.status,
+            ok: allDataRes?.ok,
+            usersCount: allData?.users?.length || 0,
+            departmentsCount: allData?.departments?.length || 0,
+            ticketsCount: allData?.tickets?.length || 0,
+            registeredUsernames: allData?.users?.map((u: any) => u.username) || [],
+            databaseUrlAccessibilityHint: allDataRes?.ok ? 'DATABASE_URL is accessible.' : 'DATABASE_URL connection failure or misconfigured credentials.',
+          });
+          console.groupEnd();
+        } catch (diagErr) {
+          console.error('❌ [IT Helpdesk Diagnostic Utility] Diagnostic execution error:', diagErr);
+        }
       }
     } catch (err: any) {
       setErrorMessage(err.message || 'Authentication error. Please try again.');
+      console.error('🔍 [IT Helpdesk Diagnostic Utility] Authentication exception:', err);
     } finally {
       setIsLoading(false);
     }
