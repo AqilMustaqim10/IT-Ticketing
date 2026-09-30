@@ -25,7 +25,16 @@ dotenv.config();
 let pool: any = null;
 function getDbPool(): any {
   if (!pool) {
-    pool = new LocalPool();
+    if (process.env.DATABASE_URL) {
+      console.log('Connecting to PostgreSQL using DATABASE_URL:', process.env.DATABASE_URL.replace(/:([^:@]+)@/, ':****@'));
+      const realPool = new Pool({
+        connectionString: process.env.DATABASE_URL,
+      });
+      pool = ensurePgPool(realPool);
+    } else {
+      console.log('DATABASE_URL not set. Using Local JSON persistence store.');
+      pool = new LocalPool();
+    }
   }
   return pool;
 }
