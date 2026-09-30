@@ -402,10 +402,23 @@ class StorageService {
     }
   }
 
-      public login(
+  public async login(
     username: string,
     password: string
-  ): { success: boolean; error?: string; user?: User } {
+  ): Promise<{ success: boolean; error?: string; user?: User }> {
+    // 1. Try PostgreSQL backend API login first
+    const dbResult = await postgresBridge.login(username, password);
+    if (dbResult.success && dbResult.user) {
+      this.setCurrentUser(dbResult.user);
+      const allUsers = this.getAllUsers();
+      if (!allUsers.some(u => u.id === dbResult.user!.id)) {
+        allUsers.push(dbResult.user!);
+        localStorage.setItem(STORAGE_KEYS.USERS, JSON.stringify(allUsers));
+      }
+      return dbResult;
+    }
+
+    // 2. Fallback to local storage / seed check if DB login fails or is unreachable
     let allUsers = this.getAllUsers();
     const cleanUsername = username.trim().toLowerCase();
     let user = allUsers.find((u) => 
@@ -429,7 +442,7 @@ class StorageService {
       }
     }
     if (!user) {
-      return { success: false, error: "Invalid username or email. Account not found in SQL database." };
+      return { success: false, error: dbResult.error || "Invalid username or email. Account not found in database." };
     }
     const storedPassword = user.password || DEFAULT_USER_PASSWORD;
     if (storedPassword !== password.trim() && password.trim() !== "password123") {

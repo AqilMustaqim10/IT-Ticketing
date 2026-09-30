@@ -408,7 +408,7 @@ export const TicketDetailModal: React.FC<TicketDetailModalProps> = ({
                     const actName = act.userName || act.actorName || 'System';
                     const actRole = act.userRole || act.actorRole || 'SYSTEM';
                     const actText = act.message || act.details || '';
-                    const actInitial = actName.charAt(0).toUpperCase() || 'S';
+                    const actInitial = (actName || 'S').charAt(0).toUpperCase();
 
                     return (
                       <div

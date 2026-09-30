@@ -725,7 +725,7 @@ export const UserDirectoryPage: React.FC<UserDirectoryPageProps> = ({
                           <td className="py-3.5 px-4">
                             <div className="flex items-center space-x-3">
                               <div className="w-9 h-9 rounded-xl bg-blue-50 text-blue-700 font-bold text-xs flex items-center justify-center border border-blue-200/80 shadow-2xs shrink-0">
-                                {user.fullName.charAt(0).toUpperCase()}
+                                {(user?.fullName || 'User').charAt(0).toUpperCase()}
                               </div>
                               <div>
                                 <div className="font-bold text-slate-900 flex items-center gap-1.5">
@@ -924,7 +924,7 @@ export const UserDirectoryPage: React.FC<UserDirectoryPageProps> = ({
                           <td className="py-3.5 px-4">
                             <div className="flex items-center space-x-3">
                               <div className="w-8 h-8 rounded-lg bg-indigo-50 text-indigo-700 font-bold text-xs flex items-center justify-center border border-indigo-200/80 shadow-2xs shrink-0">
-                                {dept.code.substring(0, 2)}
+                                {(dept?.code || 'DP').substring(0, 2)}
                               </div>
                               <div>
                                 <span className="font-bold text-slate-900 block">{dept.name}</span>

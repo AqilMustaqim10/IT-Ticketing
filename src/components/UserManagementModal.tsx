@@ -296,7 +296,7 @@ export const UserManagementModal: React.FC<UserManagementModalProps> = ({
                           <td className="p-3">
                             <div className="flex items-center space-x-2.5">
                               <div className="w-7 h-7 rounded-full bg-blue-100 text-blue-700 font-bold text-[11px] flex items-center justify-center border border-blue-200 shrink-0">
-                                {u.fullName.charAt(0).toUpperCase()}
+                                {(u.fullName || 'User').charAt(0).toUpperCase()}
                               </div>
                               <div>
                                 <div className="font-bold text-slate-900">{u.fullName}</div>

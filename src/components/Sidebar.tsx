@@ -316,7 +316,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
               }}
               className="w-7 h-7 rounded-full flex items-center justify-center font-bold text-xs shrink-0 border"
             >
-              {currentUser.fullName.charAt(0).toUpperCase()}
+              {(currentUser?.fullName || 'User').charAt(0).toUpperCase()}
             </div>
             {!isCollapsed && (
               <div className="truncate flex-1 min-w-0">

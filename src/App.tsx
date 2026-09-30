@@ -258,11 +258,11 @@ export default function App() {
   // =========================================================================
   // 3. Authentication & Password Lifecycle Workflows
   // =========================================================================
-  const handleLogin = (userOrUsername: User | string, password?: string) => {
+  const handleLogin = async (userOrUsername: User | string, password?: string) => {
     let authenticatedUser: User | null = null;
 
     if (typeof userOrUsername === 'string') {
-      const result = storageService.login(userOrUsername, password || '');
+      const result = await storageService.login(userOrUsername, password || '');
       if (result.success && result.user) {
         authenticatedUser = result.user;
       } else {

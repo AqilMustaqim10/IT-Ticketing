@@ -39,6 +39,26 @@ export const postgresBridge = {
   },
 
   /**
+   * Authenticate user against PostgreSQL backend API
+   */
+  login: async (username: string, password: string): Promise<{ success: boolean; error?: string; user?: User }> => {
+    try {
+      const res = await fetch('/api/db/users/login', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ username, password }),
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        return { success: false, error: data.error || 'Authentication failed' };
+      }
+      return data;
+    } catch (err: any) {
+      return { success: false, error: err.message || 'Database connection error' };
+    }
+  },
+
+  /**
    * Fetch entire dataset straight from PostgreSQL tables
    */
   fetchAllData: async (): Promise<DbFullPayload | null> => {
