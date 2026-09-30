@@ -118,3 +118,34 @@ CREATE TABLE IF NOT EXISTS email_logs (
     auto_reply_body TEXT,
     error_message TEXT
 );
+
+-- Seed Business Units (with auto-update on conflict)
+INSERT INTO business_units (id, code, name, description, icon, theme_color) VALUES
+('bu-ccec', 'CCEC', 'Convention Centre & Events Corp', 'Convention halls, audio-visual staging, exhibition logistics', 'Building2', '#2563eb'),
+('bu-fnb', 'FNB', 'Food & Beverage Division', 'Restaurant point-of-sale terminals, kitchen display systems', 'Utensils', '#d97706'),
+('bu-hotel', 'HOTEL', 'Hotel & Hospitality Group', 'Room management, guest keycard systems, property management', 'Hotel', '#0891b2'),
+('bu-klbs', 'KLBS', 'Building Services & Facilities', 'HVAC, elevators, electrical infrastructure, building maintenance', 'Wrench', '#0d9488'),
+('bu-klw', 'KLW', 'Corporate Office Tower', 'Tenant networking, access card security, workspace IT support', 'Briefcase', '#4f46e5'),
+('bu-hq', 'UOA HQ', 'Group IT Headquarters', 'Central ERP, cybersecurity, enterprise infrastructure', 'ShieldCheck', '#475569')
+ON CONFLICT (id) DO UPDATE SET
+    code = EXCLUDED.code,
+    name = EXCLUDED.name,
+    description = EXCLUDED.description,
+    icon = EXCLUDED.icon,
+    theme_color = EXCLUDED.theme_color;
+
+-- Seed Departments (with auto-update on conflict)
+INSERT INTO departments (id, name, code, business_unit_id) VALUES
+('dept-ccec-ops', 'AV & Stage Operations', 'CCEC-AV', 'bu-ccec'),
+('dept-fnb-pos', 'POS & Kitchen Systems', 'FNB-POS', 'bu-fnb'),
+('dept-hotel-pms', 'Front Desk & Keycard Systems', 'HOTEL-PMS', 'bu-hotel'),
+('dept-hq-it', 'Enterprise Helpdesk & Networks', 'HQ-NET', 'bu-hq')
+ON CONFLICT (id) DO UPDATE SET
+    name = EXCLUDED.name,
+    code = EXCLUDED.code,
+    business_unit_id = EXCLUDED.business_unit_id;
+
+-- Seed Default Admin User
+INSERT INTO users (id, username, password_hash, full_name, email, role, business_unit_id, department_id, department, must_change_password) VALUES
+('user-admin-01', 'admin', '906a2d1d0337b51e06dbcdba69d3fec8933ae4c25f483c66f2c42245b74bf7fc', 'System Administrator', 'admin@uoa.com.my', 'ADMIN', 'bu-hq', 'dept-hq-it', 'Enterprise Helpdesk & Networks', FALSE)
+ON CONFLICT (username) DO NOTHING;

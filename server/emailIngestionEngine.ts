@@ -241,7 +241,7 @@ export function detectPriority(subject: string, body: string): 'LOW' | 'MEDIUM' 
 export async function detectPriorityAI(subject: string, body: string): Promise<'LOW' | 'MEDIUM' | 'HIGH' | 'URGENT'> {
   try {
     const apiKey = process.env.GEMINI_API_KEY;
-    if (!apiKey) {
+    if (!apiKey || apiKey === 'dummy' || apiKey.startsWith('your_') || apiKey.length < 10) {
       return detectPriority(subject, body);
     }
 

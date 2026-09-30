@@ -288,6 +288,26 @@ async function startServer() {
     }
   });
 
+  // PUT: Update Department
+  app.put('/api/db/departments/:id', async (req, res) => {
+    const db = getDbPool();
+    if (!db) return res.status(503).json({ error: 'PostgreSQL not configured' });
+    try {
+      const { id } = req.params;
+      const { name, code, businessUnitId } = req.body;
+      const { rows } = await queryDb(db,
+        'UPDATE departments SET name = $1, code = $2, business_unit_id = $3 WHERE id = $4 RETURNING id, name, code, business_unit_id as "businessUnitId"',
+        [name, code, businessUnitId, id]
+      );
+      if (rows.length === 0) {
+        return res.status(404).json({ error: 'Department not found' });
+      }
+      res.json(rows[0]);
+    } catch (err: any) {
+      res.status(500).json({ error: err.message });
+    }
+  });
+
   // GET: Users
   app.get('/api/db/users', async (req, res) => {
     const db = getDbPool();

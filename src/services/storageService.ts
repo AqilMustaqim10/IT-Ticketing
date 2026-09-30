@@ -705,6 +705,13 @@ class StorageService {
     allDepts[deptIndex] = updatedDept;
     localStorage.setItem(STORAGE_KEYS.DEPARTMENTS, JSON.stringify(allDepts));
 
+    // Update SQL backend
+    fetch(`/api/db/departments/${deptId}`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(updatedDept),
+    }).catch(() => {});
+
     return { success: true, department: updatedDept };
   }
 
