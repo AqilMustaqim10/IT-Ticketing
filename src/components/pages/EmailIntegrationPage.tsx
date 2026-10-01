@@ -300,10 +300,12 @@ export const EmailIntegrationPage: React.FC<EmailIntegrationPageProps> = ({
       if (onTicketCreated) {
         onTicketCreated();
       }
-      if (res.fetchedCount > 0) {
+      if (res.success && res.fetchedCount > 0) {
         onShowToast(`POP3 Fetch complete: ${res.fetchedCount} new report(s) auto-converted into tickets!`, 'success');
-      } else {
+      } else if (res.success) {
         onShowToast(res.message || 'POP3 Mailbox is up to date (no new unread reports).', 'info');
+      } else {
+        onShowToast(res.message || 'POP3 synchronization failed.', 'error');
       }
     } catch (e: any) {
       onShowToast('Company mailbox sync failed', 'error');
