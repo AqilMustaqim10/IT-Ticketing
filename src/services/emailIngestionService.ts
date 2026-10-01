@@ -480,8 +480,15 @@ class EmailIngestionService {
   public extractProblemContent(rawBody: string): string {
     if (!rawBody) return '';
 
+    // Strip HTML image tags, base64 inline images, CID references, and image placeholders before text parsing
+    let text = rawBody
+      .replace(/<img[\s\S]*?>/gi, ' ')
+      .replace(/data:image\/[a-zA-Z]+;base64,[^\s]+/g, ' ')
+      .replace(/\[image:\s*[^\]]+\]/gi, ' ')
+      .replace(/cid:[^\s]+/gi, ' ');
+
     // Strip basic HTML if present
-    let text = rawBody.replace(/<[^>]+>/g, ' ');
+    text = text.replace(/<[^>]+>/g, ' ');
     text = text.replace(/\r\n/g, '\n').replace(/\r/g, '\n');
 
     const lines = text.split('\n');
@@ -505,6 +512,9 @@ class EmailIngestionService {
       /^get\s+outlook\s+for\s+(?:ios|android)/i,
       /^sent\s+from\s+mail\s+for\s+windows/i,
       /^sent\s+with\s+blackberry/i,
+      /^\[\s*image[:\s]/i,
+      /^cid:/i,
+      /^logo[\s_-]?(?:png|jpg|jpeg)/i,
       /^(?:notice\s+of\s+confidentiality|confidentiality\s+(?:notice|note|statement)|disclaimer|important\s+notice)[:.\s]*$/i,
       /this\s+(?:email|e-mail|message)\s+(?:and\s+any\s+attachments?\s+)?(?:is|are)\s+(?:confidential|intended\s+solely|intended\s+only)/i,
       /the\s+information\s+contained\s+in\s+this\s+(?:email|e-mail|message|transmission)\s+is\s+confidential/i,
