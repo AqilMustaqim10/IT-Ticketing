@@ -118,7 +118,41 @@ export const EmailIntegrationPage: React.FC<EmailIntegrationPageProps> = ({
   const [isSyncingMailbox, setIsSyncingMailbox] = useState(false);
 
   // Active Tab
-  const [activeTab, setActiveTab] = useState<'SETTINGS' | 'LOGS'>('SETTINGS');
+  const [activeTab, setActiveTab] = useState<'SETTINGS' | 'LOGS' | 'SIMULATOR'>('SETTINGS');
+
+  const [simFrom, setSimFrom] = useState('aaqil.mustaqim@uoa.com.my');
+  const [simFromName, setSimFromName] = useState('Aaqil Mustaqim');
+  const [simSubject, setSimSubject] = useState('POS Terminal #3 printer error in Grand Ballroom');
+  const [simBody, setSimBody] = useState('Hi IT Support,\n\nThe POS terminal printer is not printing receipt and showing offline error.\n\nBest regards,\nAaqil Mustaqim\nSenior Manager | UOA Hospitality\nTel: +603-5555-1234\n\nCONFIDENTIAL NOTICE: This email is intended solely for...');
+  const [isSimulating, setIsSimulating] = useState(false);
+  const [simResult, setSimResult] = useState<any>(null);
+
+  const handleSimulateSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setIsSimulating(true);
+    setSimResult(null);
+    try {
+      const res = await emailIngestionService.simulateInboundEmail({
+        from: simFrom,
+        fromName: simFromName,
+        subject: simSubject,
+        body: simBody,
+      });
+      setSimResult(res);
+      refreshLogs();
+      if (res.success) {
+        onShowToast(`Test email successfully converted into Ticket #${res.ticket?.ticketNumber || 'New'}!`, 'success');
+        if (onTicketCreated) onTicketCreated();
+      } else {
+        onShowToast(res.message || 'Simulation failed', 'error');
+      }
+    } catch (err: any) {
+      setSimResult({ success: false, message: err.message });
+      onShowToast('Failed to simulate inbound email', 'error');
+    } finally {
+      setIsSimulating(false);
+    }
+  };
 
   // Security Locking: Admin must explicitly click "Edit Configuration" before inputs become editable
   const [isEditing, setIsEditing] = useState(false);
@@ -447,6 +481,19 @@ export const EmailIntegrationPage: React.FC<EmailIntegrationPageProps> = ({
         >
           <Inbox className="w-4 h-4" />
           <span>Inbound Email Audit Logs ({logs.length})</span>
+        </button>
+
+        <button
+          type="button"
+          onClick={() => setActiveTab('SIMULATOR')}
+          className={`px-4 py-2 rounded-xl text-xs font-bold transition flex items-center gap-2 cursor-pointer whitespace-nowrap ${
+            activeTab === 'SIMULATOR'
+              ? 'bg-blue-600 text-white shadow-xs'
+              : 'bg-white text-slate-600 hover:bg-slate-100 border border-slate-200'
+          }`}
+        >
+          <Sparkles className="w-4 h-4 text-amber-500" />
+          <span>Test / Simulate Inbound Email</span>
         </button>
       </div>
 
@@ -965,6 +1012,105 @@ export const EmailIntegrationPage: React.FC<EmailIntegrationPageProps> = ({
                     </div>
                   );
                 })}
+              </div>
+            )}
+          </div>
+        </div>
+      )}
+
+      {/* TAB 3: TEST / SIMULATE INBOUND EMAIL */}
+      {activeTab === 'SIMULATOR' && (
+        <div className="space-y-6">
+          <div className="bg-white rounded-2xl border border-slate-200 p-6 shadow-xs space-y-6">
+            <div>
+              <h3 className="text-sm font-bold text-slate-900">Inbound Email &amp; Signature Stripping Simulator</h3>
+              <p className="text-xs text-slate-500 mt-0.5">
+                Test how incoming emails (including corporate signatures, legal disclaimers, and footers) are parsed and converted into tickets.
+              </p>
+            </div>
+
+            <form onSubmit={handleSimulateSubmit} className="space-y-4">
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div>
+                  <label className="block text-xs font-bold text-slate-700 mb-1">Sender Email Address</label>
+                  <input
+                    type="email"
+                    value={simFrom}
+                    onChange={(e) => setSimFrom(e.target.value)}
+                    required
+                    className="w-full px-3 py-2 rounded-xl border border-slate-200 text-xs focus:ring-2 focus:ring-blue-500 outline-hidden"
+                    placeholder="e.g. aaqil.mustaqim@uoa.com.my"
+                  />
+                  <p className="text-[10px] text-slate-400 mt-1">Must match a registered user email or auto-registers.</p>
+                </div>
+                <div>
+                  <label className="block text-xs font-bold text-slate-700 mb-1">Sender Display Name</label>
+                  <input
+                    type="text"
+                    value={simFromName}
+                    onChange={(e) => setSimFromName(e.target.value)}
+                    className="w-full px-3 py-2 rounded-xl border border-slate-200 text-xs focus:ring-2 focus:ring-blue-500 outline-hidden"
+                    placeholder="e.g. Aaqil Mustaqim"
+                  />
+                </div>
+              </div>
+
+              <div>
+                <label className="block text-xs font-bold text-slate-700 mb-1">Email Subject</label>
+                <input
+                  type="text"
+                  value={simSubject}
+                  onChange={(e) => setSimSubject(e.target.value)}
+                  required
+                  className="w-full px-3 py-2 rounded-xl border border-slate-200 text-xs focus:ring-2 focus:ring-blue-500 outline-hidden"
+                  placeholder="e.g. [URGENT] POS Terminal printer offline"
+                />
+              </div>
+
+              <div>
+                <label className="block text-xs font-bold text-slate-700 mb-1">
+                  Email Body (Include your signature, images, and footer)
+                </label>
+                <textarea
+                  rows={8}
+                  value={simBody}
+                  onChange={(e) => setSimBody(e.target.value)}
+                  required
+                  className="w-full px-3 py-2 rounded-xl border border-slate-200 text-xs font-mono focus:ring-2 focus:ring-blue-500 outline-hidden"
+                />
+                <p className="text-[10px] text-slate-400 mt-1">
+                  The heuristic engine will automatically strip out signatures, phone numbers, and disclaimers, extracting only the problem statement.
+                </p>
+              </div>
+
+              <div className="flex justify-end gap-3 pt-2">
+                <button
+                  type="submit"
+                  disabled={isSimulating}
+                  className="px-5 py-2.5 rounded-xl text-xs font-bold bg-blue-600 hover:bg-blue-700 text-white shadow-xs transition flex items-center gap-2 cursor-pointer disabled:opacity-50"
+                >
+                  {isSimulating ? <RefreshCw className="w-4 h-4 animate-spin" /> : <Sparkles className="w-4 h-4" />}
+                  <span>Process &amp; Convert Into Ticket</span>
+                </button>
+              </div>
+            </form>
+
+            {simResult && (
+              <div className={`p-4 rounded-xl border text-xs space-y-2 ${
+                simResult.success ? 'bg-emerald-50 border-emerald-200 text-emerald-900' : 'bg-rose-50 border-rose-200 text-rose-900'
+              }`}>
+                <div className="font-bold flex items-center gap-1.5">
+                  {simResult.success ? <Check className="w-4 h-4 text-emerald-600" /> : <X className="w-4 h-4 text-rose-600" />}
+                  <span>{simResult.message}</span>
+                </div>
+                {simResult.ticket && (
+                  <div className="pt-2 border-t border-emerald-200/60 space-y-1 font-mono text-[11px]">
+                    <div>Created Ticket Number: <span className="font-bold">{simResult.ticket.ticketNumber}</span></div>
+                    <div>Title: {simResult.ticket.title}</div>
+                    <div>Priority: {simResult.ticket.priority} | Category: {simResult.ticket.category}</div>
+                    <div className="text-slate-600 mt-1">Extracted Problem Statement: &ldquo;{simResult.ticket.description}&rdquo;</div>
+                  </div>
+                )}
               </div>
             )}
           </div>

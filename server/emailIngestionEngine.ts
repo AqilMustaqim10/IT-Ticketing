@@ -812,10 +812,10 @@ export async function ingestEmailReport(
       };
     } catch (err: any) {
       await queryDb(client, 'ROLLBACK');
-      console.error('Error during email ingestion transaction:', err.message);
+      console.error('Error during email ingestion transaction:', err);
       return {
         success: false,
-        message: `Ingestion transaction error: ${err.message}`,
+        message: `Ingestion transaction error: ${err.message || err}`,
         log: null,
       };
     } finally {
@@ -823,15 +823,9 @@ export async function ingestEmailReport(
     }
   }
 
-  // Fallback if no PostgreSQL
-  if (email.messageId) {
-    memoryProcessedMessageIds.add(email.messageId);
-  }
-
   return {
-    success: true,
-    ticketNumber: `TCK-${Date.now().toString().slice(-4)}`,
-    message: 'Processed in local memory mode',
+    success: false,
+    message: 'Database connection pool not available.',
     log: null,
   };
 }
@@ -872,7 +866,29 @@ export async function executePop3Sync(
 
   let fetchRes = await fetchPop3Emails(pop3Options, memoryProcessedMessageIds);
 
-  if (!fetchRes.success || fetchRes.fetchedEmails.length === 0) {
+  if (!fetchRes.success) {
+    return {
+      success: false,
+      fetchedCount: 0,
+      createdTickets: [],
+      skippedCount: 0,
+      totalInMailbox: 0,
+      message: `POP3 Connection Error (${config.host}:${config.port}): ${fetchRes.message}`,
+    };
+  }
+
+  if (fetchRes.fetchedEmails.length === 0) {
+    return {
+      success: true,
+      fetchedCount: 0,
+      createdTickets: [],
+      skippedCount: fetchRes.skippedCount,
+      totalInMailbox: fetchRes.totalInMailbox,
+      message: 'Mailbox connected successfully, but no new unread messages found.',
+    };
+  }
+
+  if (false) {
     console.log('[POP3 Sync] External POP3 server unreachable or empty mailbox. Falling back to sample inbound email reports for testing/demonstration.');
     const sampleEmails: ParsedEmail[] = [
       {
@@ -947,9 +963,11 @@ export async function executePop3Sync(
 
   const createdTickets: { ticketId: string; ticketNumber: string; isReply: boolean; subject: string; from: string }[] = [];
 
+  let successfulIngests = 0;
   for (const email of fetchRes.fetchedEmails) {
     const ingestRes = await ingestEmailReport(pool, email, config);
     if (ingestRes.success && ingestRes.ticketNumber) {
+      successfulIngests++;
       createdTickets.push({
         ticketId: ingestRes.ticketId || '',
         ticketNumber: ingestRes.ticketNumber,
@@ -957,18 +975,22 @@ export async function executePop3Sync(
         subject: email.subject,
         from: email.from,
       });
+    } else {
+      console.error('[POP3 Sync] Failed to ingest email:', ingestRes.message);
     }
   }
 
   currentConfig.lastSyncTimestamp = new Date().toISOString();
 
   return {
-    success: true,
-    fetchedCount: fetchRes.fetchedEmails.length,
+    success: successfulIngests > 0,
+    fetchedCount: successfulIngests,
     createdTickets,
     skippedCount: fetchRes.skippedCount,
     totalInMailbox: fetchRes.totalInMailbox,
-    message: `Successfully synced mailbox! Processed ${fetchRes.fetchedEmails.length} new email report(s).`,
+    message: successfulIngests > 0
+      ? `Successfully synced mailbox! Processed ${successfulIngests} new email report(s) into tickets.`
+      : `Sync completed, but no new tickets were generated.`,
   };
 }
 

@@ -1005,6 +1005,36 @@ class EmailIngestionService {
   }
 
   /**
+   * Simulates/tests inbound email ingestion via backend endpoint
+   */
+  public async simulateInboundEmail(payload: {
+    from: string;
+    fromName?: string;
+    to?: string;
+    subject: string;
+    body: string;
+    attachments?: any[];
+  }): Promise<{ success: boolean; ticket?: any; message: string }> {
+    try {
+      const res = await fetch('/api/email/simulate-inbound', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload),
+      });
+      if (res.ok) {
+        const data = await res.json();
+        await storageService.loadFromPostgres();
+        await this.fetchServerLogs();
+        return data;
+      }
+      const errText = await res.text();
+      return { success: false, message: `Server error: ${errText || res.statusText}` };
+    } catch (err: any) {
+      return { success: false, message: `Network error: ${err.message}` };
+    }
+  }
+
+  /**
    * Pulls sample emails and simulates mailbox sync
    */
   public async syncSampleMailbox(): Promise<{
