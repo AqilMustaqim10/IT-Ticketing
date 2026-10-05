@@ -129,6 +129,62 @@ export const EmailIntegrationPage: React.FC<EmailIntegrationPageProps> = ({
   const [isSimulating, setIsSimulating] = useState(false);
   const [simResult, setSimResult] = useState<any>(null);
 
+  // Troubleshoot & Regex Test Bench State
+  const [showTroubleshoot, setShowTroubleshoot] = useState(false);
+  const [troubleshootFrom, setTroubleshootFrom] = useState('aaqil.mustaqim@uoa.com.my');
+  const [troubleshootSubject, setTroubleshootSubject] = useState('URGENT: POS Terminal offline -- Sent from my iPhone');
+  const [troubleshootBody, setTroubleshootBody] = useState('Hi IT Team,\n\nThe POS terminal is not printing receipts.\n\nBest regards,\nAaqil Mustaqim\n\n-------------------\nCONFIDENTIALITY NOTICE: This email is confidential...');
+  const [troubleshootResult, setTroubleshootResult] = useState<{
+    passedValidation: boolean;
+    checks: {
+      isOurEmail: boolean;
+      isDaemon: boolean;
+      isNoreply: boolean;
+      isRejectedSubject: boolean;
+      isBounceSubject: boolean;
+      isCompanyDomain: boolean;
+      domain: string;
+    };
+    extractedProblem: string;
+    inferredUser: string;
+    eligibleForTicket: boolean;
+  } | null>(null);
+
+  const handleRunTroubleshoot = () => {
+    const from = troubleshootFrom.toLowerCase().trim();
+    const subject = troubleshootSubject.trim();
+    const body = troubleshootBody.trim();
+
+    const ourEmail = (config.emailAddress || '').toLowerCase().trim();
+    const isOurEmail = from === ourEmail;
+    const isDaemon = from.includes('mailer-daemon') || from.includes('postmaster');
+    const isNoreply = from.includes('noreply') || from.includes('no-reply');
+    const isRejectedSubject = /ticket\s+creation\s+rejected/i.test(subject);
+    const isBounceSubject = /delivery\s+status\s+notification|undelivered\s+mail/i.test(subject);
+    const isBlocked = isOurEmail || isDaemon || isNoreply || isRejectedSubject || isBounceSubject;
+
+    const domain = from.split('@')[1] || '';
+    const isCompanyDomain = domain.includes('uohospitality') || domain.includes('uoa');
+
+    const extractedProblem = emailIngestionService.extractProblemContent(body);
+
+    setTroubleshootResult({
+      passedValidation: !isBlocked,
+      checks: {
+        isOurEmail,
+        isDaemon,
+        isNoreply,
+        isRejectedSubject,
+        isBounceSubject,
+        isCompanyDomain,
+        domain,
+      },
+      extractedProblem,
+      inferredUser: from.split('@')[0],
+      eligibleForTicket: !isBlocked && extractedProblem.length > 0,
+    });
+  };
+
   const [diagnosticResult, setDiagnosticResult] = useState<{
     success?: boolean;
     message?: string;
@@ -1380,6 +1436,103 @@ export const EmailIntegrationPage: React.FC<EmailIntegrationPageProps> = ({
                 )}
               </div>
             )}
+
+            {/* Hidden / Developer Troubleshoot & Regex Test Bench */}
+            <div className="pt-6 border-t border-slate-200">
+              <button
+                type="button"
+                onClick={() => setShowTroubleshoot(!showTroubleshoot)}
+                className="text-xs font-bold text-slate-600 hover:text-blue-600 flex items-center gap-1.5 cursor-pointer transition"
+              >
+                <span>🛠️ {showTroubleshoot ? 'Hide' : 'Show'} Troubleshoot &amp; Regex Test Bench</span>
+              </button>
+
+              {showTroubleshoot && (
+                <div className="mt-4 bg-slate-900 text-slate-100 rounded-2xl p-5 space-y-4 text-xs font-mono">
+                  <div className="flex items-center justify-between border-b border-slate-800 pb-3">
+                    <div className="font-bold text-slate-200 flex items-center gap-2">
+                      <Sparkles className="w-4 h-4 text-amber-400" />
+                      <span>Email Header Validation &amp; Regex Heuristics Test Bench</span>
+                    </div>
+                    <span className="text-[10px] bg-slate-800 text-amber-400 px-2 py-0.5 rounded-md">Offline Sandbox</span>
+                  </div>
+
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                    <div>
+                      <label className="block text-[11px] text-slate-400 mb-1 font-sans font-semibold">Test Mock From</label>
+                      <input
+                        type="email"
+                        value={troubleshootFrom}
+                        onChange={(e) => setTroubleshootFrom(e.target.value)}
+                        className="w-full px-3 py-1.5 rounded-lg bg-slate-800 border border-slate-700 text-slate-100 text-xs outline-hidden"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-[11px] text-slate-400 mb-1 font-sans font-semibold">Test Mock Subject</label>
+                      <input
+                        type="text"
+                        value={troubleshootSubject}
+                        onChange={(e) => setTroubleshootSubject(e.target.value)}
+                        className="w-full px-3 py-1.5 rounded-lg bg-slate-800 border border-slate-700 text-slate-100 text-xs outline-hidden"
+                      />
+                    </div>
+                  </div>
+
+                  <div>
+                    <label className="block text-[11px] text-slate-400 mb-1 font-sans font-semibold">Test Mock Body (Signatures &amp; Disclaimers)</label>
+                    <textarea
+                      rows={4}
+                      value={troubleshootBody}
+                      onChange={(e) => setTroubleshootBody(e.target.value)}
+                      className="w-full px-3 py-1.5 rounded-lg bg-slate-800 border border-slate-700 text-slate-100 text-xs outline-hidden font-mono"
+                    />
+                  </div>
+
+                  <div className="flex justify-end">
+                    <button
+                      type="button"
+                      onClick={handleRunTroubleshoot}
+                      className="px-4 py-2 rounded-xl text-xs font-bold bg-amber-600 hover:bg-amber-700 text-white transition cursor-pointer font-sans"
+                    >
+                      Run Regex &amp; Header Validation Test
+                    </button>
+                  </div>
+
+                  {troubleshootResult && (
+                    <div className="mt-4 p-4 rounded-xl bg-slate-950 border border-slate-800 space-y-3 text-[11px]">
+                      <div className="font-bold flex items-center justify-between">
+                        <span className={troubleshootResult.eligibleForTicket ? 'text-emerald-400' : 'text-rose-400'}>
+                          {troubleshootResult.eligibleForTicket ? '✓ PASSED: Eligible for Ticket Creation' : '✗ FAILED: Blocked or Empty Problem'}
+                        </span>
+                        <span className="text-slate-500 font-normal">Domain: {troubleshootResult.checks.domain}</span>
+                      </div>
+
+                      <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 text-[10px]">
+                        <div className={`p-2 rounded-lg border ${!troubleshootResult.checks.isOurEmail ? 'bg-emerald-950/40 border-emerald-800/60 text-emerald-300' : 'bg-rose-950/40 border-rose-800/60 text-rose-300'}`}>
+                          Loop Check: {troubleshootResult.checks.isOurEmail ? 'Blocked (Own Email)' : 'Passed'}
+                        </div>
+                        <div className={`p-2 rounded-lg border ${!troubleshootResult.checks.isDaemon ? 'bg-emerald-950/40 border-emerald-800/60 text-emerald-300' : 'bg-rose-950/40 border-rose-800/60 text-rose-300'}`}>
+                          Daemon Check: {troubleshootResult.checks.isDaemon ? 'Blocked (Mailer Daemon)' : 'Passed'}
+                        </div>
+                        <div className={`p-2 rounded-lg border ${!troubleshootResult.checks.isNoreply ? 'bg-emerald-950/40 border-emerald-800/60 text-emerald-300' : 'bg-rose-950/40 border-rose-800/60 text-rose-300'}`}>
+                          Noreply Check: {troubleshootResult.checks.isNoreply ? 'Blocked (No-Reply)' : 'Passed'}
+                        </div>
+                        <div className={`p-2 rounded-lg border ${troubleshootResult.checks.isCompanyDomain ? 'bg-blue-950/40 border-blue-800/60 text-blue-300' : 'bg-amber-950/40 border-amber-800/60 text-amber-300'}`}>
+                          Domain Match: {troubleshootResult.checks.isCompanyDomain ? 'Company Domain' : 'External Domain'}
+                        </div>
+                      </div>
+
+                      <div className="pt-2 border-t border-slate-800">
+                        <div className="text-slate-400 text-[10px] mb-1 font-sans">Regex Problem Extraction Result:</div>
+                        <div className="p-2.5 rounded-lg bg-slate-900 border border-slate-800 text-slate-200 font-mono text-[11px]">
+                          &ldquo;{troubleshootResult.extractedProblem}&rdquo;
+                        </div>
+                      </div>
+                    </div>
+                  )}
+                </div>
+              )}
+            </div>
           </div>
         </div>
       )}
