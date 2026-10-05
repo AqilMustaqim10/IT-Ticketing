@@ -1063,3 +1063,87 @@ export function startBackgroundEmailPoller(pool: Pool | null) {
     }
   }, intervalMs);
 }
+
+export async function forceIngestPop3Emails(pool: Pool | null, config: ServerPop3Config): Promise<{
+  success: boolean;
+  fetchedCount: number;
+  createdTickets: { ticketId: string; ticketNumber: string; subject: string; from: string }[];
+  message: string;
+}> {
+  await resetEmailIngestionCache(pool);
+
+  const pop3Options: Pop3Options & { leaveCopyOnServer?: boolean } = {
+    host: config.host,
+    port: config.port,
+    useSsl: config.useSsl,
+    username: config.username || config.emailAddress,
+    password: config.appPassword,
+    leaveCopyOnServer: config.leaveCopyOnServer,
+  };
+
+  let fetchRes = await fetchPop3Emails(pop3Options, new Set());
+  if (!fetchRes.success) {
+    return {
+      success: false,
+      fetchedCount: 0,
+      createdTickets: [],
+      message: `POP3 Connection failed: ${fetchRes.message}`,
+    };
+  }
+
+  if (fetchRes.fetchedEmails.length === 0) {
+    return {
+      success: true,
+      fetchedCount: 0,
+      createdTickets: [],
+      message: `Mailbox connected (Total in mailbox: ${fetchRes.totalInMailbox}), but no messages found to fetch.`,
+    };
+  }
+
+  const createdTickets: { ticketId: string; ticketNumber: string; subject: string; from: string }[] = [];
+  let count = 0;
+
+  for (const email of fetchRes.fetchedEmails) {
+    const client = await getDbConnection(pool);
+    try {
+      const ticketId = `ticket-${Date.now()}-${Math.random().toString(36).substr(2, 4)}`;
+      const ticketNumber = `TKT-${Math.floor(100000 + Math.random() * 900000)}`;
+      const title = email.subject || 'Inbound Email Support Request';
+      const description = email.problemContent || email.textBody || email.htmlBody || 'Inbound support request from email.';
+      
+      await queryDb(
+        client,
+        `INSERT INTO tickets (id, ticket_number, title, description, status, priority, business_unit_id, department_id, created_by, source)
+         VALUES (?, ?, ?, ?, 'OPEN', 'MEDIUM', ?, ?, 'user-admin-01', 'EMAIL')`,
+        [ticketId, ticketNumber, title, description, config.targetBusinessUnitId || 'bu-ccec', config.defaultDepartmentId || 'dept-ccec-ops']
+      );
+
+      const logId = `email-log-${Date.now()}-${Math.random().toString(36).substr(2, 5)}`;
+      await queryDb(
+        client,
+        `INSERT INTO email_logs (id, message_id, from_address, from_name, to_address, subject, body_preview, raw_body, received_at, status, created_ticket_id, created_ticket_number, attachments_count)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, NOW(), 'SUCCESS', ?, ?, ?)`,
+        [logId, email.messageId, email.from, email.fromName, email.to, title, description.substring(0, 200), email.textBody || '', ticketId, ticketNumber, email.attachments?.length || 0]
+      );
+
+      count++;
+      createdTickets.push({
+        ticketId,
+        ticketNumber,
+        subject: title,
+        from: email.from,
+      });
+    } catch (err: any) {
+      console.error('Force ticket creation error:', err);
+    } finally {
+      if (client && typeof client.release === 'function') client.release();
+    }
+  }
+
+  return {
+    success: true,
+    fetchedCount: count,
+    createdTickets,
+    message: `Force Ingest complete! Successfully converted ${count} email(s) into tickets.`,
+  };
+}

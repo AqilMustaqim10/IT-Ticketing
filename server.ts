@@ -17,6 +17,7 @@ import {
   startBackgroundEmailPoller,
   ServerPop3Config,
   resetEmailIngestionCache,
+  forceIngestPop3Emails,
 } from './server/emailIngestionEngine';
 import { parseRawEmail, extractProblemContent } from './server/emailParser';
 
@@ -1156,6 +1157,18 @@ async function startServer() {
       const db = getDbPool();
       await resetEmailIngestionCache(db);
       res.json({ success: true, message: 'Email ingestion cache and database logs cleared successfully.' });
+    } catch (err: any) {
+      res.status(500).json({ error: err.message });
+    }
+  });
+
+  // POST: Force Ingest All Emails into Tickets
+  app.post('/api/email/force-ingest', async (req, res) => {
+    try {
+      const db = getDbPool();
+      const cfg = getEmailConfig();
+      const result = await forceIngestPop3Emails(db, cfg);
+      res.json(result);
     } catch (err: any) {
       res.status(500).json({ error: err.message });
     }

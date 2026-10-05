@@ -473,6 +473,29 @@ class EmailIngestionService {
   }
 
   /**
+   * Force ingests all emails from mailbox into tickets, bypassing all filters
+   */
+  public async forceIngestEmails(): Promise<{
+    success: boolean;
+    fetchedCount: number;
+    createdTickets: { ticketId: string; ticketNumber: string; subject: string; from: string }[];
+    message: string;
+  }> {
+    try {
+      const res = await fetch('/api/email/force-ingest', { method: 'POST' });
+      if (res.ok) {
+        const data = await res.json();
+        await storageService.loadFromPostgres();
+        await this.fetchServerLogs();
+        return data;
+      }
+      return { success: false, fetchedCount: 0, createdTickets: [], message: 'Force ingest request failed' };
+    } catch (e: any) {
+      return { success: false, fetchedCount: 0, createdTickets: [], message: e.message || 'Force ingest error' };
+    }
+  }
+
+  /**
    * Strips email signatures, corporate legal footers, confidentiality notices,
    * mobile device tags, quoted conversation threads, and opening greetings,
    * extracting purely the core problem statement / issue content.

@@ -419,6 +419,28 @@ export const EmailIntegrationPage: React.FC<EmailIntegrationPageProps> = ({
     }
   };
 
+  const handleForceIngest = async () => {
+    setIsSyncingMailbox(true);
+    try {
+      const res = await emailIngestionService.forceIngestEmails();
+      refreshLogs();
+      if (onTicketCreated) {
+        onTicketCreated();
+      }
+      if (res.success && res.fetchedCount > 0) {
+        onShowToast(`⚡ Force Ingest Success: ${res.fetchedCount} email(s) converted into tickets!`, 'success');
+      } else if (res.success) {
+        onShowToast(res.message || 'Mailbox checked, 0 messages found to ingest.', 'info');
+      } else {
+        onShowToast(res.message || 'Force ingest failed.', 'error');
+      }
+    } catch (e: any) {
+      onShowToast('Force ingest failed', 'error');
+    } finally {
+      setIsSyncingMailbox(false);
+    }
+  };
+
   const handleClearLogs = async () => {
     await emailIngestionService.clearLogs();
     refreshLogs();
@@ -534,6 +556,16 @@ export const EmailIntegrationPage: React.FC<EmailIntegrationPageProps> = ({
           >
             <RefreshCw className={`w-3.5 h-3.5 ${isSyncingMailbox ? 'animate-spin' : ''}`} />
             <span>Reset Cache &amp; Re-Scan</span>
+          </button>
+          <button
+            type="button"
+            onClick={handleForceIngest}
+            disabled={isSyncingMailbox}
+            className="px-3.5 py-2 rounded-xl text-xs font-bold bg-amber-600 hover:bg-amber-700 text-white shadow-xs transition flex items-center gap-1.5 cursor-pointer disabled:opacity-50"
+            title="Bypasses all filters and forcefully converts every email currently in the mailbox into a support ticket"
+          >
+            <Sparkles className={`w-3.5 h-3.5 ${isSyncingMailbox ? 'animate-spin' : ''}`} />
+            <span>⚡ Force Ingest All Emails</span>
           </button>
         </div>
       </div>
