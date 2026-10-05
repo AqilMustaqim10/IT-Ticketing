@@ -105,6 +105,11 @@ export const DEFAULT_SERVER_EMAIL_CONFIG: ServerPop3Config = {
 
 // In-memory fallback sets
 let memoryProcessedMessageIds = new Set<string>();
+
+export function resetEmailIngestionCache() {
+  memoryProcessedMessageIds.clear();
+  console.log('[Email Engine] Memory processed message IDs cache cleared.');
+}
 let activePollerTimer: NodeJS.Timeout | null = null;
 let currentConfig: ServerPop3Config = { ...DEFAULT_SERVER_EMAIL_CONFIG };
 

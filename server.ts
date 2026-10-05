@@ -16,6 +16,7 @@ import {
   ingestEmailReport,
   startBackgroundEmailPoller,
   ServerPop3Config,
+  resetEmailIngestionCache,
 } from './server/emailIngestionEngine';
 import { parseRawEmail, extractProblemContent } from './server/emailParser';
 
@@ -1144,6 +1145,16 @@ async function startServer() {
     try {
       await queryDb(db, 'DELETE FROM email_logs');
       res.json({ success: true, message: 'Email ingestion logs cleared.' });
+    } catch (err: any) {
+      res.status(500).json({ error: err.message });
+    }
+  });
+
+  // POST: Reset Email Ingestion Cache & Force Re-Scan
+  app.post('/api/email/reset-cache', async (req, res) => {
+    try {
+      resetEmailIngestionCache();
+      res.json({ success: true, message: 'Email ingestion cache reset successfully.' });
     } catch (err: any) {
       res.status(500).json({ error: err.message });
     }

@@ -396,6 +396,29 @@ export const EmailIntegrationPage: React.FC<EmailIntegrationPageProps> = ({
     }
   };
 
+  const handleResetAndSync = async () => {
+    setIsSyncingMailbox(true);
+    try {
+      await fetch('/api/email/reset-cache', { method: 'POST' });
+      const res = await emailIngestionService.fetchPop3EmailsNow(config);
+      refreshLogs();
+      if (onTicketCreated) {
+        onTicketCreated();
+      }
+      if (res.success && res.fetchedCount > 0) {
+        onShowToast(`Cache reset & POP3 Fetch complete: ${res.fetchedCount} new report(s) auto-converted into tickets!`, 'success');
+      } else if (res.success) {
+        onShowToast(res.message || 'Cache reset. Mailbox checked (0 new unread reports).', 'info');
+      } else {
+        onShowToast(res.message || 'POP3 synchronization failed.', 'error');
+      }
+    } catch (e: any) {
+      onShowToast('Reset & sync failed', 'error');
+    } finally {
+      setIsSyncingMailbox(false);
+    }
+  };
+
   const handleClearLogs = async () => {
     await emailIngestionService.clearLogs();
     refreshLogs();
@@ -501,6 +524,16 @@ export const EmailIntegrationPage: React.FC<EmailIntegrationPageProps> = ({
           >
             <RefreshCw className={`w-3.5 h-3.5 ${isSyncingMailbox ? 'animate-spin' : ''}`} />
             <span>{isSyncingMailbox ? 'Syncing Mailbox...' : 'Sync Mailbox Now'}</span>
+          </button>
+          <button
+            type="button"
+            onClick={handleResetAndSync}
+            disabled={isSyncingMailbox}
+            className="px-3.5 py-2 rounded-xl text-xs font-bold bg-slate-100 hover:bg-slate-200 text-slate-800 border border-slate-300 transition flex items-center gap-1.5 cursor-pointer disabled:opacity-50"
+            title="Clears ingestion memory cache so all emails currently in mailbox are freshly re-scanned and converted into tickets"
+          >
+            <RefreshCw className={`w-3.5 h-3.5 ${isSyncingMailbox ? 'animate-spin' : ''}`} />
+            <span>Reset Cache &amp; Re-Scan</span>
           </button>
         </div>
       </div>
