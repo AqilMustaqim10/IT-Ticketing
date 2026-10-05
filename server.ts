@@ -1153,8 +1153,9 @@ async function startServer() {
   // POST: Reset Email Ingestion Cache & Force Re-Scan
   app.post('/api/email/reset-cache', async (req, res) => {
     try {
-      resetEmailIngestionCache();
-      res.json({ success: true, message: 'Email ingestion cache reset successfully.' });
+      const db = getDbPool();
+      await resetEmailIngestionCache(db);
+      res.json({ success: true, message: 'Email ingestion cache and database logs cleared successfully.' });
     } catch (err: any) {
       res.status(500).json({ error: err.message });
     }

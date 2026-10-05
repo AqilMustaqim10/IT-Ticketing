@@ -106,8 +106,22 @@ export const DEFAULT_SERVER_EMAIL_CONFIG: ServerPop3Config = {
 // In-memory fallback sets
 let memoryProcessedMessageIds = new Set<string>();
 
-export function resetEmailIngestionCache() {
+export async function resetEmailIngestionCache(pool: Pool | null) {
   memoryProcessedMessageIds.clear();
+  if (pool) {
+    try {
+      const client = await (pool as any).getConnection();
+      try {
+        await queryDb(client, 'DELETE FROM processed_email_messages');
+        await queryDb(client, 'DELETE FROM email_logs');
+        console.log('[Email Engine] Cleared processed_email_messages and email_logs tables from database.');
+      } finally {
+        if (client && typeof client.release === 'function') client.release();
+      }
+    } catch (dbErr: any) {
+      console.error('[Email Engine] Error clearing processed messages database tables:', dbErr.message);
+    }
+  }
   console.log('[Email Engine] Memory processed message IDs cache cleared.');
 }
 let activePollerTimer: NodeJS.Timeout | null = null;
