@@ -12,19 +12,36 @@ import { ParsedEmail, ParsedEmailAttachment, extractProblemContent } from './ema
 import { fetchPop3Emails, testPop3Mailbox, Pop3Options } from './pop3Client';
 import { sendSmtpEmail } from './smtpClient';
 
-async function getDbClient(pool: Pool) {
-  const client = await pool.connect();
-  return Object.assign(client, {
-    beginTransaction: async () => { await client.query('BEGIN'); },
-    commit: async () => { await client.query('COMMIT'); },
-    rollback: async () => { await client.query('ROLLBACK'); },
-  });
+async function getDbConnection(pool: any) {
+  if (!pool) return null;
+  if (typeof pool.getConnection === 'function') {
+    const client = await pool.getConnection();
+    if (client && typeof client.beginTransaction !== 'function') {
+      client.beginTransaction = async () => { if (typeof client.query === 'function') await client.query('BEGIN'); };
+      client.commit = async () => { if (typeof client.query === 'function') await client.query('COMMIT'); };
+      client.rollback = async () => { if (typeof client.query === 'function') await client.query('ROLLBACK'); };
+    }
+    return client;
+  }
+  if (typeof pool.connect === 'function') {
+    const client = await pool.connect();
+    if (client && typeof client.beginTransaction !== 'function') {
+      client.beginTransaction = async () => { if (typeof client.query === 'function') await client.query('BEGIN'); };
+      client.commit = async () => { if (typeof client.query === 'function') await client.query('COMMIT'); };
+      client.rollback = async () => { if (typeof client.query === 'function') await client.query('ROLLBACK'); };
+    }
+    return client;
+  }
+  return {
+    query: async (sql: string, params: any[]) => pool.query(sql, params),
+    beginTransaction: async () => {},
+    commit: async () => {},
+    rollback: async () => {},
+    release: async () => {},
+  };
 }
 
 function ensurePgPool(pool: Pool) {
-  if (pool && !(pool as any).getConnection) {
-    (pool as any).getConnection = async () => getDbClient(pool);
-  }
   return pool;
 }
 
@@ -110,7 +127,7 @@ export async function resetEmailIngestionCache(pool: Pool | null) {
   memoryProcessedMessageIds.clear();
   if (pool) {
     try {
-      const client = await (pool as any).getConnection();
+      const client = await getDbConnection(pool);
       try {
         await queryDb(client, 'DELETE FROM processed_email_messages');
         await queryDb(client, 'DELETE FROM email_logs');
@@ -133,7 +150,7 @@ let currentConfig: ServerPop3Config = { ...DEFAULT_SERVER_EMAIL_CONFIG };
 export async function initEmailTables(pool: Pool) {
   try {
     ensurePgPool(pool);
-    const client = await (pool as any).getConnection();
+    const client = await getDbConnection(pool);
     try {
       // Load saved config if present
       const res = await queryDb(client, 'SELECT config FROM email_config WHERE id = ?', ['primary_mailbox']);
@@ -459,7 +476,7 @@ export async function ingestEmailReport(
   let isReply = false;
 
   if (pool) {
-    const client = await (pool as any).getConnection();
+    const client = await getDbConnection(pool);
     try {
       await client.beginTransaction();
 
