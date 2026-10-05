@@ -530,7 +530,7 @@ export async function ingestEmailReport(
         await queryDb(
           client,
           `INSERT INTO users (id, username, password_hash, full_name, email, role, business_unit_id, department_id, must_change_password)
-           VALUES (?, ?, ?, ?, ?, 'USER', ?, ?, 0)
+           VALUES (?, ?, ?, ?, ?, 'USER', ?, ?, false)
            ON CONFLICT (email) DO UPDATE SET full_name = EXCLUDED.full_name`,
           [matchedUserId, inferredUsername, 'password123', inferredName, cleanFrom, matchedBUId, matchedDeptId]
         );
