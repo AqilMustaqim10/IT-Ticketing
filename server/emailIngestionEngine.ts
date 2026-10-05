@@ -983,14 +983,14 @@ export async function executePop3Sync(
   currentConfig.lastSyncTimestamp = new Date().toISOString();
 
   return {
-    success: successfulIngests > 0,
+    success: true,
     fetchedCount: successfulIngests,
     createdTickets,
     skippedCount: fetchRes.skippedCount,
     totalInMailbox: fetchRes.totalInMailbox,
     message: successfulIngests > 0
       ? `Successfully synced mailbox! Processed ${successfulIngests} new email report(s) into tickets.`
-      : `Sync completed, but no new tickets were generated.`,
+      : `Sync completed successfully. Mailbox is up to date (Total in mailbox: ${fetchRes.totalInMailbox}, 0 new unread reports).`,
   };
 }
 

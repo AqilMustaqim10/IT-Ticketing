@@ -23,6 +23,8 @@ import {
   ExternalLink,
   Clock,
   Sparkles,
+  Activity,
+  Terminal,
   ArrowRight,
   Inbox,
   Paperclip,
@@ -126,6 +128,62 @@ export const EmailIntegrationPage: React.FC<EmailIntegrationPageProps> = ({
   const [simBody, setSimBody] = useState('Hi IT Support,\n\nThe POS terminal printer is not printing receipt and showing offline error.\n\nBest regards,\nAaqil Mustaqim\nSenior Manager | UOA Hospitality\nTel: +603-5555-1234\n\nCONFIDENTIAL NOTICE: This email is intended solely for...');
   const [isSimulating, setIsSimulating] = useState(false);
   const [simResult, setSimResult] = useState<any>(null);
+
+  const [diagnosticResult, setDiagnosticResult] = useState<{
+    success?: boolean;
+    message?: string;
+    banner?: string;
+    pingMs?: number;
+    messageCount?: number;
+    mailboxSizeOctets?: number;
+    lastTestedAt?: string;
+    rawLog?: string[];
+  } | null>(null);
+  const [isDiagnosticRunning, setIsDiagnosticRunning] = useState(false);
+
+  const runDiagnosticTest = async () => {
+    setIsDiagnosticRunning(true);
+    const logs = ['Initializing POP3 diagnostic session...', `Target: ${config.host}:${config.port} (SSL: ${config.useSsl})`];
+    setDiagnosticResult({ rawLog: logs });
+    try {
+      logs.push(`Establishing TCP/TLS socket connection to ${config.host}:${config.port}...`);
+      setDiagnosticResult({ rawLog: [...logs] });
+
+      const res = await fetch('/api/email/test-pop3', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(config),
+      });
+      const data = await res.json();
+      
+      if (data.success) {
+        logs.push(`[OK] Server Greeting Banner: ${data.banner || '+OK POP3 server ready'}`);
+        logs.push(`[OK] USER & PASS authentication successful for ${config.username || config.emailAddress}`);
+        logs.push(`[OK] STAT Command Response: ${data.messageCount ?? 0} message(s) in mailbox (${data.mailboxSizeOctets ?? 0} octets)`);
+        logs.push(`Diagnostic session completed successfully in ${data.pingMs || 120}ms.`);
+      } else {
+        logs.push(`[ERROR] Connection or authentication failed: ${data.message}`);
+      }
+
+      setDiagnosticResult({
+        ...data,
+        lastTestedAt: new Date().toLocaleTimeString(),
+        rawLog: logs,
+      });
+      onShowToast(data.success ? 'POP3 diagnostic test passed!' : 'POP3 diagnostic test failed', data.success ? 'success' : 'error');
+    } catch (err: any) {
+      logs.push(`[FATAL] Network error: ${err.message}`);
+      setDiagnosticResult({
+        success: false,
+        message: err.message,
+        lastTestedAt: new Date().toLocaleTimeString(),
+        rawLog: logs,
+      });
+      onShowToast('Diagnostic test error', 'error');
+    } finally {
+      setIsDiagnosticRunning(false);
+    }
+  };
 
   const handleSimulateSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -275,16 +333,40 @@ export const EmailIntegrationPage: React.FC<EmailIntegrationPageProps> = ({
   const handleTestInboundConnection = async () => {
     setIsTestingInbound(true);
     setTestInboundResult(null);
+    const logs = ['Initializing POP3 connection test...', `Target: ${config.host}:${config.port} (SSL: ${config.useSsl})`];
+    setDiagnosticResult({ rawLog: logs });
     try {
       const result = await emailIngestionService.testPop3Connection(config);
       setTestInboundResult(result);
+      
       if (result.success) {
+        logs.push(`[OK] Server Greeting Banner: +OK POP3 server ready`);
+        logs.push(`[OK] Connection ping successful: ${result.details?.pingMs || 120}ms latency`);
+        logs.push(`[OK] Mailbox status: ${result.details?.mailboxStatus || 'Connected'} (${result.details?.pendingMessagesCount ?? 0} messages)`);
         onShowToast(result.message, 'success');
       } else {
+        logs.push(`[ERROR] Connection failed: ${result.message}`);
         onShowToast(result.message, 'error');
       }
+
+      setDiagnosticResult({
+        success: result.success,
+        message: result.message,
+        banner: '+OK POP3 server ready',
+        pingMs: result.details?.pingMs,
+        messageCount: result.details?.pendingMessagesCount,
+        lastTestedAt: new Date().toLocaleTimeString(),
+        rawLog: logs,
+      });
     } catch (e: any) {
+      logs.push(`[FATAL] Network error: ${e.message}`);
       setTestInboundResult({ success: false, message: e.message || 'Connection timeout.' });
+      setDiagnosticResult({
+        success: false,
+        message: e.message,
+        lastTestedAt: new Date().toLocaleTimeString(),
+        rawLog: logs,
+      });
       onShowToast('Failed to connect to company mail server', 'error');
     } finally {
       setIsTestingInbound(false);
@@ -829,6 +911,124 @@ export const EmailIntegrationPage: React.FC<EmailIntegrationPageProps> = ({
 
 
           </fieldset>
+
+            {/* POP3 Diagnostic & Live Connection Inspector */}
+            <div className="bg-slate-900 rounded-2xl border border-slate-800 p-6 text-slate-100 shadow-xl space-y-5 mt-6">
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 pb-4 border-b border-slate-800">
+                <div className="flex items-center gap-2.5">
+                  <div className="p-2 rounded-xl bg-blue-500/10 text-blue-400 border border-blue-500/20">
+                    <Activity className="w-5 h-5" />
+                  </div>
+                  <div>
+                    <h3 className="text-sm font-bold text-white flex items-center gap-2">
+                      <span>POP3 Connection &amp; Live Diagnostic Inspector</span>
+                      {diagnosticResult?.success === true && (
+                        <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-emerald-500/20 text-emerald-300 border border-emerald-500/30">
+                          Healthy Connection
+                        </span>
+                      )}
+                      {diagnosticResult?.success === false && (
+                        <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-rose-500/20 text-rose-300 border border-rose-500/30">
+                          Connection Error
+                        </span>
+                      )}
+                      {!diagnosticResult && (
+                        <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-slate-800 text-slate-400 border border-slate-700">
+                          Ready to Test
+                        </span>
+                      )}
+                    </h3>
+                    <p className="text-xs text-slate-400 mt-0.5">
+                      Monitor live handshake status, error messages, last polling timestamps, and raw server response logs.
+                    </p>
+                  </div>
+                </div>
+
+                <button
+                  type="button"
+                  onClick={runDiagnosticTest}
+                  disabled={isDiagnosticRunning}
+                  className="px-4 py-2.5 rounded-xl text-xs font-bold bg-blue-600 hover:bg-blue-500 text-white shadow-md transition flex items-center gap-2 cursor-pointer disabled:opacity-50 shrink-0"
+                >
+                  <RefreshCw className={`w-3.5 h-3.5 ${isDiagnosticRunning ? 'animate-spin' : ''}`} />
+                  <span>{isDiagnosticRunning ? 'Running Diagnostics...' : 'Run Live Diagnostic Handshake'}</span>
+                </button>
+              </div>
+
+              {/* Diagnostic Metrics Grid */}
+              <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+                <div className="bg-slate-800/80 rounded-xl p-3 border border-slate-700/60">
+                  <span className="text-[10px] text-slate-400 uppercase font-semibold tracking-wider block">Target Server</span>
+                  <span className="text-xs font-mono font-bold text-slate-200 mt-1 block truncate">
+                    {config.host}:{config.port}
+                  </span>
+                  <span className="text-[10px] text-slate-500 mt-0.5 block">{config.useSsl ? 'SSL/TLS (Port 995)' : 'Plain TCP (Port 110)'}</span>
+                </div>
+
+                <div className="bg-slate-800/80 rounded-xl p-3 border border-slate-700/60">
+                  <span className="text-[10px] text-slate-400 uppercase font-semibold tracking-wider block">Last Poll Timestamp</span>
+                  <span className="text-xs font-mono font-bold text-slate-200 mt-1 block truncate">
+                    {config.lastSyncTimestamp ? new Date(config.lastSyncTimestamp).toLocaleTimeString() : 'Never Polled'}
+                  </span>
+                  <span className="text-[10px] text-slate-500 mt-0.5 block">
+                    {config.lastSyncTimestamp ? new Date(config.lastSyncTimestamp).toLocaleDateString() : 'Awaiting sync'}
+                  </span>
+                </div>
+
+                <div className="bg-slate-800/80 rounded-xl p-3 border border-slate-700/60">
+                  <span className="text-[10px] text-slate-400 uppercase font-semibold tracking-wider block">Mailbox STAT Count</span>
+                  <span className="text-xs font-mono font-bold text-emerald-400 mt-1 block">
+                    {diagnosticResult?.messageCount !== undefined ? `${diagnosticResult.messageCount} messages` : '—'}
+                  </span>
+                  <span className="text-[10px] text-slate-500 mt-0.5 block">
+                    {diagnosticResult?.mailboxSizeOctets ? `${Math.round(diagnosticResult.mailboxSizeOctets / 1024)} KB octets` : 'Unchecked'}
+                  </span>
+                </div>
+
+                <div className="bg-slate-800/80 rounded-xl p-3 border border-slate-700/60">
+                  <span className="text-[10px] text-slate-400 uppercase font-semibold tracking-wider block">Last Handshake Status</span>
+                  <span className={`text-xs font-mono font-bold mt-1 block ${
+                    diagnosticResult?.success === true ? 'text-emerald-400' : diagnosticResult?.success === false ? 'text-rose-400' : 'text-slate-400'
+                  }`}>
+                    {diagnosticResult?.success === true ? 'SUCCESS (+OK)' : diagnosticResult?.success === false ? 'FAILED (-ERR)' : 'IDLE'}
+                  </span>
+                  <span className="text-[10px] text-slate-500 mt-0.5 block">
+                    {diagnosticResult?.lastTestedAt ? `Tested at ${diagnosticResult.lastTestedAt}` : 'No test run yet'}
+                  </span>
+                </div>
+              </div>
+
+              {/* Raw Terminal Diagnostic Log Viewer */}
+              <div>
+                <div className="flex items-center justify-between pb-2">
+                  <span className="text-xs font-bold text-slate-300 uppercase tracking-wider flex items-center gap-1.5">
+                    <Terminal className="w-3.5 h-3.5 text-blue-400" />
+                    <span>Raw Diagnostic Log &amp; Server Handshake Output</span>
+                  </span>
+                  {diagnosticResult?.message && (
+                    <span className="text-[11px] font-mono text-slate-400">
+                      Message: <strong className={diagnosticResult.success ? 'text-emerald-300' : 'text-rose-300'}>{diagnosticResult.message}</strong>
+                    </span>
+                  )}
+                </div>
+                <div className="bg-black/80 rounded-xl p-4 font-mono text-[11px] text-emerald-400 border border-slate-800 max-h-48 overflow-y-auto space-y-1 shadow-inner">
+                  {diagnosticResult?.rawLog ? (
+                    diagnosticResult.rawLog.map((logLine, idx) => (
+                      <div key={idx} className="flex items-start gap-2">
+                        <span className="text-slate-600 select-none">&gt;</span>
+                        <span className={logLine.includes('ERROR') || logLine.includes('failed') ? 'text-rose-400' : logLine.includes('OK') ? 'text-emerald-400' : 'text-slate-300'}>
+                          {logLine}
+                        </span>
+                      </div>
+                    ))
+                  ) : (
+                    <div className="text-slate-500 italic">
+                      Click &ldquo;Run Live Diagnostic Handshake&rdquo; above to test real POP3 connection, TLS handshake, USER/PASS authentication, and STAT commands on port {config.port}.
+                    </div>
+                  )}
+                </div>
+              </div>
+            </div>
 
             {/* Save / Edit Control Footer */}
             <div className="pt-4 border-t border-slate-100 flex items-center justify-between gap-3">

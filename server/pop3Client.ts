@@ -333,6 +333,7 @@ export async function fetchPop3Emails(
     await session.login();
     const { count } = await session.stat();
     totalInMailbox = count;
+    console.log(`[POP3 Debug] Connected to ${config.host}:${config.port}. STAT count: ${count}`);
 
     if (count === 0) {
       await session.quit();
@@ -341,21 +342,25 @@ export async function fetchPop3Emails(
         fetchedEmails: [],
         totalInMailbox: 0,
         skippedCount: 0,
-        message: 'Mailbox is empty. No new inbound emails found.',
+        message: 'Mailbox is empty according to STAT (0 messages).',
       };
     }
 
     const messages = await session.list();
+    console.log(`[POP3 Debug] LIST messages count: ${messages.length}`, messages);
     const maxToFetch = Math.min(messages.length, config.maxMessages || 20);
 
     for (let i = 0; i < maxToFetch; i++) {
       const msg = messages[i];
       try {
         const rawContent = await session.retr(msg.msgNum);
+        console.log(`[POP3 Debug] RETR message #${msg.msgNum} raw length: ${rawContent.length}`);
         const parsed = parseRawEmail(rawContent);
+        console.log(`[POP3 Debug] Parsed message ID: "${parsed.messageId}", Subject: "${parsed.subject}", From: "${parsed.from}"`);
 
         // Check if message ID was already processed
         if (knownMessageIds.has(parsed.messageId)) {
+          console.log(`[POP3 Debug] Message ID ${parsed.messageId} already in knownMessageIds. Skipping duplicate.`);
           skippedCount++;
           continue;
         }
