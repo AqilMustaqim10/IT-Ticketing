@@ -439,7 +439,7 @@ export async function ingestEmailReport(
   // Extract strictly the problem description, stripping signatures, greetings, mobile tags, and corporate disclaimers
   const cleanBody = (email.problemContent || extractProblemContent(email.textBody || email.htmlBody || '')).trim() || '(No problem description provided)';
 
-  // Loop prevention: ignore own email address, mailer-daemon, postmaster, or rejection notices
+  // Loop prevention: ignore own email address, mailer-daemon, postmaster, auto-acknowledgements, or bounce notices
   const ourEmail = (config.emailAddress || '').toLowerCase().trim();
   if (
     cleanFrom === ourEmail ||
@@ -449,7 +449,11 @@ export async function ingestEmailReport(
     cleanFrom.includes('no-reply') ||
     /ticket\s+creation\s+rejected/i.test(cleanSubject) ||
     /delivery\s+status\s+notification/i.test(cleanSubject) ||
-    /undelivered\s+mail/i.test(cleanSubject)
+    /undelivered\s+mail/i.test(cleanSubject) ||
+    /\[auto-acknowledgment\]/i.test(cleanSubject) ||
+    /auto-reply/i.test(cleanSubject) ||
+    /out\s+of\s+office/i.test(cleanSubject) ||
+    cleanBody.includes('Thank you for contacting UOA Hospitality Support')
   ) {
     return {
       success: true,
@@ -900,79 +904,27 @@ export async function executePop3Sync(
     leaveCopyOnServer: config.leaveCopyOnServer,
   };
 
-  memoryProcessedMessageIds.clear();
-  let fetchRes = await fetchPop3Emails(pop3Options, new Set());
+  let fetchRes = await fetchPop3Emails(pop3Options, memoryProcessedMessageIds);
 
-  if (!fetchRes.success || fetchRes.fetchedEmails.length === 0) {
-    console.log('[POP3 Sync] Mailbox empty or external POP3 unreachable. Falling back to sample inbound email reports for testing/demonstration.');
-    const sampleEmails: ParsedEmail[] = [
-      {
-        messageId: `sample-msg-1-${Date.now()}`,
-        from: 'aaqil.mustaqim@uoa.com.my',
-        fromName: 'Aaqil Mustaqim',
-        to: config.emailAddress,
-        subject: 'URGENT: POS Cashier Terminal #2 in Grand Ballroom not printing receipts',
-        date: new Date().toISOString(),
-        textBody: 'Hi IT Helpdesk,\n\nThe POS terminal cashier machine in Grand Ballroom counter 2 suddenly stopped printing receipts. We have an ongoing banquet event with 300 guests arriving.\n\nError code: PRINTER_COM_PORT_TIMEOUT.\n\nRegards,\nAaqil Mustaqim',
-        htmlBody: '',
-        problemContent: 'POS terminal cashier machine in Grand Ballroom counter 2 suddenly stopped printing receipts during ongoing banquet event.',
-        attachments: [
-          {
-            name: 'POS_Terminal2_Error.png',
-            size: 1200000,
-            type: 'image/png',
-            dataUrl: 'https://images.unsplash.com/photo-1556742049-0a67c5574f73?auto=format&fit=crop&w=800&q=80',
-          },
-        ],
-        rawHeaders: {},
-      },
-      {
-        messageId: `sample-msg-2-${Date.now()}`,
-        from: 'sarah.chen@uoa.com.my',
-        fromName: 'Sarah Chen',
-        to: config.emailAddress,
-        subject: 'Outlook email login failed - Password synchronization error',
-        date: new Date().toISOString(),
-        textBody: 'Hello Support Team,\n\nI am unable to log into my Microsoft Outlook 365 client this morning. Error code 0x80040115.\n\nSarah Chen',
-        htmlBody: '',
-        problemContent: 'Unable to log into Microsoft Outlook 365 client. Error code 0x80040115.',
-        attachments: [],
-        rawHeaders: {},
-      },
-      {
-        messageId: `sample-msg-3-${Date.now()}`,
-        from: 'david.kumar@uoa.com.my',
-        fromName: 'David Kumar',
-        to: config.emailAddress,
-        subject: 'Kitchen Display System (KDS) screen flickering in Main Kitchen',
-        date: new Date().toISOString(),
-        textBody: 'Hi IT Team,\n\nThe Kitchen Display System touch monitor at hot line station has been flickering constantly since 11:00 AM.\n\nDavid Kumar',
-        htmlBody: '',
-        problemContent: 'Kitchen Display System touch monitor at hot line station flickering constantly.',
-        attachments: [],
-        rawHeaders: {},
-      },
-      {
-        messageId: `sample-msg-4-${Date.now()}`,
-        from: 'lisa.wong@uoa.com.my',
-        fromName: 'Lisa Wong',
-        to: config.emailAddress,
-        subject: 'Request for Guest Keycard Encoder setup at Front Desk Lobby',
-        date: new Date().toISOString(),
-        textBody: 'Dear IT Desk,\n\nPlease install and configure the new RFID keycard encoder unit at Front Desk Lobby Counter 1.\n\nLisa Wong',
-        htmlBody: '',
-        problemContent: 'Install and configure new RFID keycard encoder unit at Front Desk Lobby Counter 1.',
-        attachments: [],
-        rawHeaders: {},
-      },
-    ];
-
-    fetchRes = {
-      success: true,
-      fetchedEmails: sampleEmails,
-      totalInMailbox: 4,
+  if (!fetchRes.success) {
+    return {
+      success: false,
+      fetchedCount: 0,
+      createdTickets: [],
       skippedCount: 0,
-      message: 'Successfully loaded 4 sample email reports.',
+      totalInMailbox: 0,
+      message: `POP3 Connection Error (${config.host}:${config.port}): ${fetchRes.message}`,
+    };
+  }
+
+  if (fetchRes.fetchedEmails.length === 0) {
+    return {
+      success: true,
+      fetchedCount: 0,
+      createdTickets: [],
+      skippedCount: fetchRes.skippedCount,
+      totalInMailbox: fetchRes.totalInMailbox,
+      message: 'Mailbox connected successfully, but no new unread messages found.',
     };
   }
 
