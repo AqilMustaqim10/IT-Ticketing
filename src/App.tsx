@@ -54,11 +54,40 @@ export default function App() {
   // =========================================================================
   const [currentUser, setCurrentUser] = useState<User | null>(() => {
     storageService.initialize();
+    const saved = localStorage.getItem('uoa_current_user');
+    if (saved) {
+      try {
+        const u = JSON.parse(saved);
+        storageService.setCurrentUser(u);
+        return u;
+      } catch {
+        return null;
+      }
+    }
     storageService.setCurrentUser(null);
     return null;
   });
 
-  const [currentView, setCurrentView] = useState<AppView>('DASHBOARD');
+  const [currentView, setCurrentView] = useState<AppView>(() => {
+    const savedView = localStorage.getItem('uoa_current_view');
+    return (savedView as AppView) || 'DASHBOARD';
+  });
+
+  useEffect(() => {
+    if (currentUser) {
+      localStorage.setItem('uoa_current_user', JSON.stringify(currentUser));
+      storageService.setCurrentUser(currentUser);
+    } else {
+      localStorage.removeItem('uoa_current_user');
+      storageService.setCurrentUser(null);
+    }
+  }, [currentUser]);
+
+  useEffect(() => {
+    if (currentView) {
+      localStorage.setItem('uoa_current_view', currentView);
+    }
+  }, [currentView]);
   const [showAdminCharts, setShowAdminCharts] = useState(true);
   const [businessUnits, setBusinessUnits] = useState<BusinessUnit[]>([]);
   const [departments, setDepartments] = useState<Department[]>([]);

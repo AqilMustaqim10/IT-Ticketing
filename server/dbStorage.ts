@@ -393,6 +393,9 @@ export class LocalPool {
   async connect() {
     return new LocalPoolClient();
   }
+  async getConnection() {
+    return new LocalPoolClient();
+  }
   async query(sql: string, params: any[] = []) {
     return dbInstance.query(sql, params);
   }
