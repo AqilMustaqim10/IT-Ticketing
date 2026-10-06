@@ -304,6 +304,58 @@ class LocalJsonDatabase {
       return { rows: [], rowCount: 1 };
     }
 
+    // Handle DELETE queries
+    if (upper.startsWith('DELETE FROM')) {
+      if (upper.includes('FROM TICKETS')) {
+        if (upper.includes('WHERE ID =')) {
+          const id = params[0];
+          delete this.state.tickets[id];
+        } else {
+          this.state.tickets = {};
+        }
+        this.save();
+        return { rows: [], rowCount: 1 };
+      }
+      if (upper.includes('FROM USERS')) {
+        const id = params[0];
+        delete this.state.users[id];
+        this.save();
+        return { rows: [], rowCount: 1 };
+      }
+      if (upper.includes('FROM DEPARTMENTS')) {
+        const id = params[0];
+        delete this.state.departments[id];
+        this.save();
+        return { rows: [], rowCount: 1 };
+      }
+      if (upper.includes('FROM TICKET_COMMENTS')) {
+        if (upper.includes('WHERE TICKET_ID =')) {
+          const tId = params[0];
+          for (const k of Object.keys(this.state.ticket_comments)) {
+            if (this.state.ticket_comments[k].ticket_id === tId) {
+              delete this.state.ticket_comments[k];
+            }
+          }
+        } else if (upper.includes('WHERE USER_ID =')) {
+          const uId = params[0];
+          for (const k of Object.keys(this.state.ticket_comments)) {
+            if (this.state.ticket_comments[k].user_id === uId) {
+              delete this.state.ticket_comments[k];
+            }
+          }
+        } else {
+          this.state.ticket_comments = {};
+        }
+        this.save();
+        return { rows: [], rowCount: 1 };
+      }
+      if (upper.includes('FROM EMAIL_LOGS')) {
+        this.state.email_logs = {};
+        this.save();
+        return { rows: [], rowCount: 1 };
+      }
+    }
+
     // Handle UPDATE tickets
     if (upper.startsWith('UPDATE TICKETS')) {
       // Find id from params or query
