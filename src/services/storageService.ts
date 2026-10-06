@@ -901,10 +901,10 @@ class StorageService {
     return { success: true, user: updatedUser };
   }
 
-  public deleteUser(
+  public async deleteUser(
     currentUser: User,
     userId: string
-  ): { success: boolean; error?: string } {
+  ): Promise<{ success: boolean; error?: string }> {
     if (currentUser.role === 'USER') {
       return { success: false, error: 'Unauthorized: Staff users cannot delete accounts.' };
     }
@@ -929,9 +929,13 @@ class StorageService {
       }
     }
 
+    const dbDeleted = await postgresBridge.deleteUser(userId);
+    if (!dbDeleted) {
+      return { success: false, error: 'Failed to delete user from database.' };
+    }
+
     const updatedUsers = allUsers.filter((u) => u.id !== userId);
     localStorage.setItem(STORAGE_KEYS.USERS, JSON.stringify(updatedUsers));
-    postgresBridge.deleteUser(userId);
 
     return { success: true };
   }
@@ -1233,7 +1237,7 @@ class StorageService {
     return { success: true, ticket };
   }
 
-  public deleteTicket(currentUser: User, ticketId: string): { success: boolean; error?: string } {
+  public async deleteTicket(currentUser: User, ticketId: string): Promise<{ success: boolean; error?: string }> {
     if (!currentUser || (currentUser.role !== 'ADMIN' && currentUser.role !== 'IT')) {
       return { success: false, error: 'Unauthorized: Only Administrators and IT Support can delete tickets.' };
     }
@@ -1249,11 +1253,13 @@ class StorageService {
       return { success: false, error: 'Forbidden: IT Support can only delete tickets within their Business Unit.' };
     }
 
+    const dbDeleted = await postgresBridge.deleteTicket(ticketId);
+    if (!dbDeleted) {
+      return { success: false, error: 'Failed to delete ticket from database.' };
+    }
+
     const updatedTickets = allTickets.filter((t) => t.id !== ticketId);
     localStorage.setItem(STORAGE_KEYS.TICKETS, JSON.stringify(updatedTickets));
-
-    // Delete in PostgreSQL database
-    postgresBridge.deleteTicket(ticketId);
 
     return { success: true };
   }

@@ -394,13 +394,13 @@ export default function App() {
     return { success: false, error: result.error };
   };
 
-  const handleDeleteUser = (userId: string) => {
+  const handleDeleteUser = async (userId: string) => {
     if (!currentUser || (currentUser.role !== 'ADMIN' && currentUser.role !== 'IT')) {
       return { success: false, error: 'Unauthorized. Only Administrators and IT Support can delete user accounts.' };
     }
-    const result = storageService.deleteUser(currentUser, userId);
+    const result = await storageService.deleteUser(currentUser, userId);
     if (result.success) {
-      refreshData();
+      await refreshData();
       showToast('User account permanently deleted.', 'success');
       return { success: true };
     }
@@ -536,14 +536,14 @@ export default function App() {
     }
   };
 
-  const handleDeleteTicket = (ticketId: string) => {
+  const handleDeleteTicket = async (ticketId: string) => {
     if (!currentUser) return;
-    const result = storageService.deleteTicket(currentUser, ticketId);
+    const result = await storageService.deleteTicket(currentUser, ticketId);
     if (result.success) {
       if (selectedTicket && selectedTicket.id === ticketId) {
         setSelectedTicket(null);
       }
-      refreshData();
+      await refreshData();
       showToast('Ticket removed successfully.', 'success');
     } else {
       showToast(result.error || 'Failed to remove ticket.', 'error');
