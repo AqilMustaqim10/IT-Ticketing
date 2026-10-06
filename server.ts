@@ -448,28 +448,23 @@ async function startServer() {
       const { id } = req.params;
       const client = await db.getConnection();
       try {
-        await client.beginTransaction();
+        if (typeof client.beginTransaction === 'function') await client.beginTransaction();
         // Unassign from tickets
         await queryDb(client, 'UPDATE tickets SET assigned_to_id = NULL WHERE assigned_to_id = $1', [id]);
         // Update tickets created by this user or delete comments
         await queryDb(client, 'DELETE FROM ticket_comments WHERE user_id = $1', [id]);
-        // If tickets were created by this user, reassign to admin or remove references if foreign key constraint exists
-        await queryDb(client, `
-          UPDATE tickets 
-          SET created_by_id = (SELECT id FROM users WHERE role = 'ADMIN' AND id != $1 LIMIT 1)
-          WHERE created_by_id = $1
-        `, [id]);
+        await queryDb(client, 'UPDATE tickets SET created_by_id = NULL WHERE created_by_id = $1', [id]);
         // Delete audit logs or set user_id to NULL
         await queryDb(client, 'UPDATE audit_logs SET user_id = NULL WHERE user_id = $1', [id]);
         // Finally delete the user
         await queryDb(client, 'DELETE FROM users WHERE id = $1', [id]);
-        await client.commit();
+        if (typeof client.commit === 'function') await client.commit();
         res.json({ success: true });
       } catch (e: any) {
-        await client.rollback();
+        if (typeof client.rollback === 'function') await client.rollback();
         throw e;
       } finally {
-        client.release();
+        if (typeof client.release === 'function') client.release();
       }
     } catch (err: any) {
       console.error('Error deleting user in PostgreSQL:', err);
@@ -776,17 +771,17 @@ async function startServer() {
       const { id } = req.params;
       const client = await db.getConnection();
       try {
-        await client.beginTransaction();
+        if (typeof client.beginTransaction === 'function') await client.beginTransaction();
         await queryDb(client, 'DELETE FROM ticket_comments WHERE ticket_id = $1', [id]);
         await queryDb(client, 'UPDATE audit_logs SET ticket_id = NULL WHERE ticket_id = $1', [id]);
         await queryDb(client, 'DELETE FROM tickets WHERE id = $1', [id]);
-        await client.commit();
+        if (typeof client.commit === 'function') await client.commit();
         res.json({ success: true, message: `Ticket ${id} deleted from database` });
       } catch (e: any) {
-        await client.rollback();
+        if (typeof client.rollback === 'function') await client.rollback();
         throw e;
       } finally {
-        client.release();
+        if (typeof client.release === 'function') client.release();
       }
     } catch (err: any) {
       console.error('Error deleting ticket from PostgreSQL:', err);
